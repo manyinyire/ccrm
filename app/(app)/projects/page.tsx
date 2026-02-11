@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, Search, Pencil, Trash2, CheckCircle, RotateCcw, Eye } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, CheckCircle, RotateCcw, Eye, FileText } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,6 +67,7 @@ type Project = {
 }
 
 export default function ProjectsPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -121,6 +123,10 @@ export default function ProjectsPage() {
         description="Manage church projects with budgets, income, and expenses"
         breadcrumb="Projects"
       >
+        <Button variant="outline" onClick={() => router.push("/projects/reports")}>
+          <FileText className="mr-2 h-4 w-4" />
+          Reports
+        </Button>
         <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingProject(null) }}>
           <DialogTrigger asChild>
             <Button>
@@ -242,7 +248,7 @@ export default function ProjectsPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => handleViewDetails(project)}>
+                          <DropdownMenuItem onClick={() => router.push(`/projects/reports?id=${project.id}`)}>
                             <Eye className="mr-2 h-4 w-4" /> View Report
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => { setEditingProject(project); setDialogOpen(true) }}>

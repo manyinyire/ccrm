@@ -16,18 +16,22 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
+    const customItems = body.customItems || {}
+    const customTotal = Object.values(customItems).reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
     const totalAmount =
       (body.offering || 0) +
       (body.tithe || 0) +
       (body.feastBadges || 0) +
       (body.firewood || 0) +
       (body.instruments || 0) +
-      (body.pastorsWelfare || 0)
+      (body.pastorsWelfare || 0) +
+      customTotal
     const balance = totalAmount - (body.sentToPastor || 0)
 
     const record = await prisma.income.create({
       data: {
         assemblyId: body.assemblyId,
+        projectId: body.projectId || null,
         date: new Date(body.date),
         currency: body.currency,
         adults: body.adults || 0,
@@ -39,6 +43,7 @@ export async function POST(req: Request) {
         firewood: body.firewood || 0,
         instruments: body.instruments || 0,
         pastorsWelfare: body.pastorsWelfare || 0,
+        customItems: customItems,
         totalAmount,
         sentToPastor: body.sentToPastor || 0,
         received: body.received || 0,

@@ -56,6 +56,23 @@ enum AssetCondition {
   DAMAGED
 }
 
+enum ProjectStatus {
+  ACTIVE
+  COMPLETED
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String        @default("")
+  budget      Float         @default(0)
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  incomes     Income[]
+  expenses    Expense[]
+}
+
 model User {
   id         String   @id @default(cuid())
   name       String
@@ -105,6 +122,8 @@ model Income {
   id             String   @id @default(cuid())
   assemblyId     String
   assembly       Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  projectId      String?
+  project        Project?  @relation(fields: [projectId], references: [id])
   date           DateTime
   currency       Currency
   adults         Int      @default(0)
@@ -140,6 +159,8 @@ model Expense {
   id            String        @id @default(cuid())
   assemblyId    String
   assembly      Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  projectId     String?
+  project       Project?      @relation(fields: [projectId], references: [id])
   date          DateTime
   currency      Currency
   event         String

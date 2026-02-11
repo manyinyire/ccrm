@@ -23,10 +23,12 @@ export async function POST(req: Request) {
     const record = await prisma.expense.create({
       data: {
         assemblyId: body.assemblyId,
+        projectId: body.projectId || null,
         date: new Date(body.date),
         currency: body.currency,
         event: body.event,
         description: body.description,
+        category: body.category || "",
         amount: body.amount,
         paidTo: body.paidTo,
         paymentSource: body.paymentSource,

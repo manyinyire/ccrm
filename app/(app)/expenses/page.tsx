@@ -39,6 +39,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 
 type ExpCatDef = { id: string; name: string; isDefault: boolean; sortOrder: number }
+type ProjectDef = { id: string; name: string; status: string }
 
 const statusStyles: Record<string, string> = {
   PAID: "bg-success/10 text-success border-success/20",
@@ -63,18 +64,22 @@ export default function ExpensesPage() {
   const [assemblies, setAssemblies] = useState<Assembly[]>([])
   const [owedPersons, setOwedPersons] = useState<OwedPerson[]>([])
   const [expenseCategories, setExpenseCategories] = useState<ExpCatDef[]>([])
+  const [projects, setProjects] = useState<ProjectDef[]>([])
 
   const fetchData = useCallback(async () => {
-    const [expRes, asmRes, opRes, catRes] = await Promise.all([
+    const [expRes, asmRes, opRes, catRes, projRes] = await Promise.all([
       fetch("/api/expenses"),
       fetch("/api/assemblies"),
       fetch("/api/owed-persons"),
       fetch("/api/expense-categories"),
+      fetch("/api/projects"),
     ])
     setExpenses(await expRes.json())
     setAssemblies(await asmRes.json())
     setOwedPersons(await opRes.json())
     setExpenseCategories(await catRes.json())
+    const allProjects = await projRes.json()
+    setProjects(allProjects.filter((p: ProjectDef) => p.status === "ACTIVE"))
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -154,7 +159,7 @@ export default function ExpensesPage() {
               <DialogTitle>New Expense</DialogTitle>
               <DialogDescription>Record a new expense for an assembly.</DialogDescription>
             </DialogHeader>
-            <ExpenseForm assemblies={assemblies} owedPersons={owedPersons} categories={expenseCategories} onClose={() => { setDialogOpen(false); fetchData() }} />
+            <ExpenseForm assemblies={assemblies} owedPersons={owedPersons} categories={expenseCategories} projects={projects} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -349,7 +354,7 @@ function ExpenseCategoryManager({ categories, onUpdate }: { categories: ExpCatDe
   )
 }
 
-function ExpenseForm({ assemblies, owedPersons, categories, onClose }: { assemblies: Assembly[]; owedPersons: OwedPerson[]; categories: ExpCatDef[]; onClose: () => void }) {
+function ExpenseForm({ assemblies, owedPersons, categories, projects, onClose }: { assemblies: Assembly[]; owedPersons: OwedPerson[]; categories: ExpCatDef[]; projects: ProjectDef[]; onClose: () => void }) {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
@@ -358,6 +363,7 @@ function ExpenseForm({ assemblies, owedPersons, categories, onClose }: { assembl
     event: "",
     description: "",
     category: "",
+    projectId: "",
     amount: 0,
     paidTo: "",
     paymentSource: "CASH_AT_HAND",
@@ -375,6 +381,7 @@ function ExpenseForm({ assemblies, owedPersons, categories, onClose }: { assembl
       body: JSON.stringify({
         ...form,
         amount: parseFloat(String(form.amount)) || 0,
+        projectId: form.projectId === "none" ? null : form.projectId || null,
         owedPersonId: form.paymentSource === "OWED_PERSON" ? form.owedPersonId : null,
       }),
     })
@@ -416,9 +423,27 @@ function ExpenseForm({ assemblies, owedPersons, categories, onClose }: { assembl
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="event">Event</Label>
-        <Input id="event" placeholder="e.g. Sunday Service, Youth Conference" value={form.event} onChange={(e) => set("event", e.target.value)} />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="event">Event</Label>
+          <Input id="event" placeholder="e.g. Sunday Service, Youth Conference" value={form.event} onChange={(e) => set("event", e.target.value)} />
+        </div>
+        {projects.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <Label>Project (optional)</Label>
+            <Select value={form.projectId} onValueChange={(v) => set("projectId", v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="No project" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No project</SelectItem>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

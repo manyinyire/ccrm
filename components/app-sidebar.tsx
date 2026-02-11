@@ -13,6 +13,7 @@ import {
   TrendingUp,
   Users,
   Package,
+  FolderKanban,
   LogOut,
 } from "lucide-react"
 import {
@@ -43,6 +44,7 @@ const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Income", href: "/income", icon: DollarSign },
   { title: "Expenses", href: "/expenses", icon: Receipt },
+  { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Owed Ledger", href: "/ledger", icon: BookOpen },
   { title: "Cash At Hand", href: "/cash", icon: Wallet },
   { title: "Assets", href: "/assets", icon: Package },

@@ -38,6 +38,7 @@ import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 
 type IncomeItemDef = { id: string; name: string; isDefault: boolean; sortOrder: number }
+type ProjectDef = { id: string; name: string; status: string }
 
 export default function IncomePage() {
   const { currency } = useCurrency()
@@ -48,16 +49,20 @@ export default function IncomePage() {
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
   const [assemblies, setAssemblies] = useState<Assembly[]>([])
   const [incomeItems, setIncomeItems] = useState<IncomeItemDef[]>([])
+  const [projects, setProjects] = useState<ProjectDef[]>([])
 
   const fetchData = useCallback(async () => {
-    const [incRes, asmRes, itemsRes] = await Promise.all([
+    const [incRes, asmRes, itemsRes, projRes] = await Promise.all([
       fetch("/api/income"),
       fetch("/api/assemblies"),
       fetch("/api/income-items"),
+      fetch("/api/projects"),
     ])
     setIncomeRecords(await incRes.json())
     setAssemblies(await asmRes.json())
     setIncomeItems(await itemsRes.json())
+    const allProjects = await projRes.json()
+    setProjects(allProjects.filter((p: ProjectDef) => p.status === "ACTIVE"))
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -136,7 +141,7 @@ export default function IncomePage() {
                 Enter the weekly income and attendance data for an assembly.
               </DialogDescription>
             </DialogHeader>
-            <IncomeForm assemblies={assemblies} incomeItems={incomeItems} onClose={() => { setDialogOpen(false); fetchData() }} />
+            <IncomeForm assemblies={assemblies} incomeItems={incomeItems} projects={projects} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -323,12 +328,13 @@ const ITEM_FIELD_MAP: Record<string, string> = {
   "Pastors Welfare": "pastorsWelfare",
 }
 
-function IncomeForm({ assemblies, incomeItems, onClose }: { assemblies: Assembly[]; incomeItems: IncomeItemDef[]; onClose: () => void }) {
+function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies: Assembly[]; incomeItems: IncomeItemDef[]; projects: ProjectDef[]; onClose: () => void }) {
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState<Record<string, string | number>>({
     date: new Date().toISOString().split("T")[0],
     assemblyId: assemblies.find(a => a.status === "ACTIVE")?.id || "",
     currency: "USD",
+    projectId: "",
     adults: 0, children: 0, newSouls: 0,
     sentToPastor: 0, received: 0,
   })
@@ -354,7 +360,7 @@ function IncomeForm({ assemblies, incomeItems, onClose }: { assemblies: Assembly
     await fetch("/api/income", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, customItems: customAmounts }),
+      body: JSON.stringify({ ...form, projectId: form.projectId === "none" ? null : form.projectId || null, customItems: customAmounts }),
     })
     setLoading(false)
     onClose()
@@ -393,6 +399,23 @@ function IncomeForm({ assemblies, incomeItems, onClose }: { assemblies: Assembly
           </Select>
         </div>
       </div>
+
+      {projects.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <Label>Project (optional)</Label>
+          <Select value={form.projectId as string} onValueChange={(v) => set("projectId", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="No project" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No project</SelectItem>
+              {projects.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { Plus, Search, Filter, Download, FileText, Trash2, Settings, HandCoins } from "lucide-react"
+import { Plus, Search, Filter, Download, FileText, Trash2, Settings } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,8 +39,6 @@ import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 
 type IncomeItemDef = { id: string; name: string; isDefault: boolean; sortOrder: number }
 type ProjectDef = { id: string; name: string; status: string }
-type Receivable = { id: string; assemblyId: string; assemblyName: string; date: string; currency: string; amount: number; paymentMethod: string; description: string }
-
 export default function IncomePage() {
   const { currency } = useCurrency()
   const [search, setSearch] = useState("")
@@ -51,23 +49,19 @@ export default function IncomePage() {
   const [assemblies, setAssemblies] = useState<Assembly[]>([])
   const [incomeItems, setIncomeItems] = useState<IncomeItemDef[]>([])
   const [projects, setProjects] = useState<ProjectDef[]>([])
-  const [receivables, setReceivables] = useState<Receivable[]>([])
-  const [recDialogOpen, setRecDialogOpen] = useState(false)
 
   const fetchData = useCallback(async () => {
-    const [incRes, asmRes, itemsRes, projRes, recRes] = await Promise.all([
+    const [incRes, asmRes, itemsRes, projRes] = await Promise.all([
       fetch("/api/income"),
       fetch("/api/assemblies"),
       fetch("/api/income-items"),
       fetch("/api/projects"),
-      fetch("/api/receivables"),
     ])
     setIncomeRecords(await incRes.json())
     setAssemblies(await asmRes.json())
     setIncomeItems(await itemsRes.json())
     const allProjects = await projRes.json()
     setProjects(allProjects.filter((p: ProjectDef) => p.status === "ACTIVE"))
-    setReceivables(await recRes.json())
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
@@ -127,21 +121,6 @@ export default function IncomePage() {
               <DialogDescription>Add or remove income line items. Default items cannot be deleted.</DialogDescription>
             </DialogHeader>
             <IncomeItemsManager items={incomeItems} onUpdate={fetchData} />
-          </DialogContent>
-        </Dialog>
-        <Dialog open={recDialogOpen} onOpenChange={setRecDialogOpen}>
-          <DialogTrigger asChild>
-            <Button variant="outline">
-              <HandCoins className="mr-2 h-4 w-4" />
-              Record Receivable
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Record Receivable</DialogTitle>
-              <DialogDescription>Record money received from an assembly. This affects Cash at Hand.</DialogDescription>
-            </DialogHeader>
-            <ReceivableForm assemblies={assemblies} onClose={() => { setRecDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -271,52 +250,6 @@ export default function IncomePage() {
           </CardContent>
         </Card>
 
-        {/* Receivables Section */}
-        <Card>
-          <CardContent className="p-4">
-            <h3 className="text-sm font-semibold mb-3">Receivables</h3>
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Date</TableHead>
-                  <TableHead>Assembly</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Cur.</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {receivables.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-6">No receivables recorded yet.</TableCell>
-                  </TableRow>
-                )}
-                {receivables.map((rec) => (
-                  <TableRow key={rec.id}>
-                    <TableCell className="font-medium">
-                      {new Date(rec.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
-                    </TableCell>
-                    <TableCell><Badge variant="secondary" className="font-normal">{rec.assemblyName}</Badge></TableCell>
-                    <TableCell><Badge variant="outline">{rec.paymentMethod}</Badge></TableCell>
-                    <TableCell><Badge variant="outline" className="text-[10px]">{rec.currency}</Badge></TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(rec.amount, rec.currency)}</TableCell>
-                    <TableCell className="text-muted-foreground truncate max-w-[150px]">{rec.description || "—"}</TableCell>
-                    <TableCell>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={async () => {
-                        await fetch(`/api/receivables/${rec.id}`, { method: "DELETE" })
-                        fetchData()
-                      }}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
       </div>
     </>
   )
@@ -513,92 +446,3 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
   )
 }
 
-function ReceivableForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: () => void }) {
-  const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({
-    date: new Date().toISOString().split("T")[0],
-    assemblyId: assemblies.find((a) => a.status === "ACTIVE")?.id || "",
-    currency: "USD",
-    amount: 0,
-    paymentMethod: "CASH",
-    description: "",
-  })
-
-  const set = (key: string, value: string | number) => setForm((f) => ({ ...f, [key]: value }))
-
-  const handleSubmit = async () => {
-    if (!form.assemblyId || !form.amount) return
-    setLoading(true)
-    await fetch("/api/receivables", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    })
-    setLoading(false)
-    onClose()
-  }
-
-  return (
-    <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="rec-date">Date</Label>
-          <Input id="rec-date" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Assembly</Label>
-          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {assemblies.filter((a) => a.status === "ACTIVE").map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="rec-amount">Amount</Label>
-          <Input id="rec-amount" type="number" placeholder="0" onChange={(e) => set("amount", parseFloat(e.target.value) || 0)} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Currency</Label>
-          <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="USD">USD</SelectItem>
-              <SelectItem value="ZWL">ZWL</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Payment Method</Label>
-          <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CASH">Cash</SelectItem>
-              <SelectItem value="ECOCASH">EcoCash</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="rec-desc">Description (optional)</Label>
-        <Input id="rec-desc" placeholder="e.g. Weekly remittance" value={form.description} onChange={(e) => set("description", e.target.value)} />
-      </div>
-      <DialogFooter>
-        <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={loading || !form.assemblyId || !form.amount}>
-          {loading ? "Saving..." : "Record Receivable"}
-        </Button>
-      </DialogFooter>
-    </div>
-  )
-}

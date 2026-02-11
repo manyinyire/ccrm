@@ -14,6 +14,7 @@ import {
   Users,
   Package,
   FolderKanban,
+  HandCoins,
   LogOut,
 } from "lucide-react"
 import {
@@ -43,6 +44,7 @@ import type { Currency } from "@/lib/mock-data"
 const mainNav = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Income", href: "/income", icon: DollarSign },
+  { title: "Receivables", href: "/receivables", icon: HandCoins },
   { title: "Expenses", href: "/expenses", icon: Receipt },
   { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Owed Ledger", href: "/ledger", icon: BookOpen },

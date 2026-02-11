@@ -123,6 +123,7 @@ model Receivable {
   currency      Currency
   amount        Float
   paymentMethod PaymentMethod
+  sentToPastor  Boolean       @default(false)
   description   String        @default("")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt

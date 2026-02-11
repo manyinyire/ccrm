@@ -23,6 +23,7 @@ export async function POST(req: Request) {
         currency: body.currency,
         amount: parseFloat(body.amount) || 0,
         paymentMethod: body.paymentMethod,
+        sentToPastor: body.sentToPastor || false,
         description: body.description || "",
       },
       include: { assembly: { select: { name: true } } },

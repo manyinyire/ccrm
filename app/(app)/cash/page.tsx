@@ -42,7 +42,7 @@ import {
   Legend,
 } from "recharts"
 
-type Receivable = { id: string; assemblyName: string; date: string; currency: string; amount: number; paymentMethod: string; description: string }
+type Receivable = { id: string; assemblyName: string; date: string; currency: string; amount: number; paymentMethod: string; sentToPastor: boolean; description: string }
 
 export default function CashPage() {
   const { currency } = useCurrency()
@@ -58,23 +58,19 @@ export default function CashPage() {
     })
   }, [])
 
-  // Cash at hand calculations — now based on receivables
-  const cashInUSD = receivables.filter((r) => r.currency === "USD" && r.paymentMethod === "CASH").reduce((sum, r) => sum + r.amount, 0)
-  const cashInZWL = receivables.filter((r) => r.currency === "ZWL" && r.paymentMethod === "CASH").reduce((sum, r) => sum + r.amount, 0)
-  const ecocashInUSD = receivables.filter((r) => r.currency === "USD" && r.paymentMethod === "ECOCASH").reduce((sum, r) => sum + r.amount, 0)
-  const ecocashInZWL = receivables.filter((r) => r.currency === "ZWL" && r.paymentMethod === "ECOCASH").reduce((sum, r) => sum + r.amount, 0)
+  // Cash at hand calculations — based on receivables NOT sent to pastor
+  const keptReceivables = receivables.filter((r) => !r.sentToPastor)
+  const cashInUSD = keptReceivables.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
+  const cashInZWL = keptReceivables.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
   const cashOutUSD = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
   const cashOutZWL = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
 
-  const totalInUSD = cashInUSD + ecocashInUSD
-  const totalInZWL = cashInZWL + ecocashInZWL
-
   const activeCash = currency === "USD"
-    ? { cashIn: totalInUSD, cashOut: cashOutUSD, balance: totalInUSD - cashOutUSD }
-    : { cashIn: totalInZWL, cashOut: cashOutZWL, balance: totalInZWL - cashOutZWL }
+    ? { cashIn: cashInUSD, cashOut: cashOutUSD, balance: cashInUSD - cashOutUSD }
+    : { cashIn: cashInZWL, cashOut: cashOutZWL, balance: cashInZWL - cashOutZWL }
 
   // Build a ledger of cash-in and cash-out transactions
-  const cashInRecords = receivables
+  const cashInRecords = keptReceivables
     .filter((r) => r.currency === currency)
     .map((r) => ({
       id: r.id,

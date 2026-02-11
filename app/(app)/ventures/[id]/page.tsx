@@ -39,12 +39,13 @@ import { formatCurrency, convertToUSD } from "@/lib/mock-data"
 import type { Assembly } from "@/lib/mock-data"
 import { useCurrency } from "@/lib/currency-context"
 
+type VentureProduct = { id: string; name: string; currency: string; unitPrice: number; stock: number }
 type VentureExpense = { id: string; date: string; currency: string; amount: number; description: string }
-type VentureAllocation = { id: string; assemblyId: string; assembly: { name: string }; date: string; currency: string; quantity: number; unitPrice: number; totalAmount: number; description: string }
+type VentureAllocation = { id: string; assemblyId: string; assembly: { name: string }; productId?: string; product?: { name: string } | null; date: string; currency: string; quantity: number; unitPrice: number; totalAmount: number; description: string }
 type VenturePayment = { id: string; assemblyId: string; assembly: { name: string }; date: string; currency: string; amount: number; paymentMethod: string; description: string }
 type Venture = {
   id: string; name: string; description: string; status: string; createdAt: string
-  expenses: VentureExpense[]; allocations: VentureAllocation[]; payments: VenturePayment[]
+  products: VentureProduct[]; expenses: VentureExpense[]; allocations: VentureAllocation[]; payments: VenturePayment[]
 }
 
 export default function VentureDetailPage() {
@@ -55,6 +56,7 @@ export default function VentureDetailPage() {
 
   const [venture, setVenture] = useState<Venture | null>(null)
   const [assemblies, setAssemblies] = useState<Assembly[]>([])
+  const [productDialog, setProductDialog] = useState(false)
   const [expenseDialog, setExpenseDialog] = useState(false)
   const [allocationDialog, setAllocationDialog] = useState(false)
   const [paymentDialog, setPaymentDialog] = useState(false)
@@ -189,13 +191,69 @@ export default function VentureDetailPage() {
           </Card>
         )}
 
-        {/* Tabs for Expenses, Allocations, Payments */}
-        <Tabs defaultValue="expenses">
-          <TabsList className="grid w-full grid-cols-3">
+        {/* Tabs for Products, Expenses, Allocations, Payments */}
+        <Tabs defaultValue="products">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="products">Products ({venture.products.length})</TabsTrigger>
             <TabsTrigger value="expenses">Capital / Expenses ({venture.expenses.length})</TabsTrigger>
             <TabsTrigger value="allocations">Allocations ({venture.allocations.length})</TabsTrigger>
             <TabsTrigger value="payments">Payments ({venture.payments.length})</TabsTrigger>
           </TabsList>
+
+          {/* Products Tab */}
+          <TabsContent value="products" className="mt-4">
+            <Card>
+              <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                <CardTitle className="text-base">Products</CardTitle>
+                <Dialog open={productDialog} onOpenChange={setProductDialog}>
+                  <DialogTrigger asChild>
+                    <Button size="sm"><Plus className="mr-1 h-4 w-4" />Add Product</Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Add Product</DialogTitle>
+                      <DialogDescription>Define a product for this venture with price and initial stock.</DialogDescription>
+                    </DialogHeader>
+                    <ProductForm ventureId={ventureId} onClose={() => { setProductDialog(false); fetchData() }} />
+                  </DialogContent>
+                </Dialog>
+              </CardHeader>
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead>Product</TableHead>
+                      <TableHead>Cur.</TableHead>
+                      <TableHead className="text-right">Unit Price</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead className="text-right">Value</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {venture.products.length === 0 && (
+                      <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No products defined yet.</TableCell></TableRow>
+                    )}
+                    {venture.products.map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell><Badge variant="outline" className="text-[10px]">{p.currency}</Badge></TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(p.unitPrice, p.currency as any)}</TableCell>
+                        <TableCell className="text-right tabular-nums font-semibold">{p.stock}</TableCell>
+                        <TableCell className="text-right tabular-nums">{formatCurrency(p.stock * p.unitPrice, p.currency as any)}</TableCell>
+                        <TableCell>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={async () => {
+                            await fetch(`/api/ventures/${ventureId}/products?productId=${p.id}`, { method: "DELETE" })
+                            fetchData()
+                          }}><Trash2 className="h-4 w-4" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Expenses Tab */}
           <TabsContent value="expenses" className="mt-4">
@@ -264,7 +322,7 @@ export default function VentureDetailPage() {
                       <DialogTitle>Allocate Products</DialogTitle>
                       <DialogDescription>Send products to an assembly to sell. This creates an amount they owe.</DialogDescription>
                     </DialogHeader>
-                    <AllocationForm ventureId={ventureId} assemblies={activeAssemblies} onClose={() => { setAllocationDialog(false); fetchData() }} />
+                    <AllocationForm ventureId={ventureId} assemblies={activeAssemblies} products={venture.products} onClose={() => { setAllocationDialog(false); fetchData() }} />
                   </DialogContent>
                 </Dialog>
               </CardHeader>
@@ -290,7 +348,7 @@ export default function VentureDetailPage() {
                       <TableRow key={a.id}>
                         <TableCell className="font-medium">{new Date(a.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</TableCell>
                         <TableCell><Badge variant="secondary" className="font-normal">{a.assembly.name}</Badge></TableCell>
-                        <TableCell className="text-right tabular-nums">{a.quantity}</TableCell>
+                        <TableCell className="text-right tabular-nums">{a.quantity}{a.product ? ` × ${a.product.name}` : ""}</TableCell>
                         <TableCell className="text-right tabular-nums">{formatCurrency(a.unitPrice, a.currency as any)}</TableCell>
                         <TableCell><Badge variant="outline" className="text-[10px]">{a.currency}</Badge></TableCell>
                         <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(a.totalAmount, a.currency as any)}</TableCell>
@@ -422,11 +480,13 @@ function ExpenseForm({ ventureId, onClose }: { ventureId: string; onClose: () =>
   )
 }
 
-function AllocationForm({ ventureId, assemblies, onClose }: { ventureId: string; assemblies: Assembly[]; onClose: () => void }) {
+function AllocationForm({ ventureId, assemblies, products, onClose }: { ventureId: string; assemblies: Assembly[]; products: VentureProduct[]; onClose: () => void }) {
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
   const [form, setForm] = useState({
     date: new Date().toISOString().split("T")[0],
     assemblyId: assemblies[0]?.id || "",
+    productId: "",
     currency: "USD",
     quantity: 0,
     unitPrice: 0,
@@ -434,12 +494,32 @@ function AllocationForm({ ventureId, assemblies, onClose }: { ventureId: string;
   })
   const set = (k: string, v: string | number) => setForm((f) => ({ ...f, [k]: v }))
 
+  const selectedProduct = products.find((p) => p.id === form.productId)
+
+  const handleProductChange = (productId: string) => {
+    if (productId === "_none") {
+      setForm((f) => ({ ...f, productId: "", unitPrice: 0, currency: "USD" }))
+    } else {
+      const prod = products.find((p) => p.id === productId)
+      if (prod) {
+        setForm((f) => ({ ...f, productId, unitPrice: prod.unitPrice, currency: prod.currency }))
+      }
+    }
+  }
+
   const handleSubmit = async () => {
     if (!form.assemblyId || !form.quantity || !form.unitPrice) return
+    setError("")
     setLoading(true)
-    await fetch(`/api/ventures/${ventureId}/allocations`, {
+    const res = await fetch(`/api/ventures/${ventureId}/allocations`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
     })
+    if (!res.ok) {
+      const data = await res.json()
+      setError(data.error || "Failed to allocate")
+      setLoading(false)
+      return
+    }
     setLoading(false)
     onClose()
   }
@@ -461,11 +541,78 @@ function AllocationForm({ ventureId, assemblies, onClose }: { ventureId: string;
           </Select>
         </div>
       </div>
+      {products.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <Label>Product</Label>
+          <Select value={form.productId || "_none"} onValueChange={handleProductChange}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">— Manual entry —</SelectItem>
+              {products.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name} ({formatCurrency(p.unitPrice, p.currency as any)}) — {p.stock} in stock</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
-          <Label>Quantity</Label>
-          <Input type="number" placeholder="0" onChange={(e) => set("quantity", parseInt(e.target.value) || 0)} />
+          <Label>Quantity{selectedProduct ? ` (${selectedProduct.stock} available)` : ""}</Label>
+          <Input type="number" placeholder="0" value={form.quantity || ""} onChange={(e) => set("quantity", parseInt(e.target.value) || 0)} />
         </div>
+        <div className="flex flex-col gap-2">
+          <Label>Unit Price</Label>
+          <Input type="number" placeholder="0.00" value={form.unitPrice || ""} onChange={(e) => set("unitPrice", parseFloat(e.target.value) || 0)} disabled={!!form.productId} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Currency</Label>
+          <Select value={form.currency} onValueChange={(v) => set("currency", v)} disabled={!!form.productId}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ZWL">ZWL</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+      <div className="text-sm text-muted-foreground">
+        Total: <strong>{formatCurrency(form.quantity * form.unitPrice, form.currency as any)}</strong>
+      </div>
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <div className="flex flex-col gap-2">
+        <Label>Description (optional)</Label>
+        <Input placeholder="e.g. 50 chickens for sale" value={form.description} onChange={(e) => set("description", e.target.value)} />
+      </div>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.assemblyId || !form.quantity || !form.unitPrice}>{loading ? "Saving..." : "Allocate"}</Button>
+      </DialogFooter>
+    </div>
+  )
+}
+
+function ProductForm({ ventureId, onClose }: { ventureId: string; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({ name: "", currency: "USD", unitPrice: 0, stock: 0 })
+  const set = (k: string, v: string | number) => setForm((f) => ({ ...f, [k]: v }))
+
+  const handleSubmit = async () => {
+    if (!form.name.trim() || !form.unitPrice) return
+    setLoading(true)
+    await fetch(`/api/ventures/${ventureId}/products`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form),
+    })
+    setLoading(false)
+    onClose()
+  }
+
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-col gap-2">
+        <Label>Product Name</Label>
+        <Input placeholder="e.g. Broiler Chicken" value={form.name} onChange={(e) => set("name", e.target.value)} />
+      </div>
+      <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Unit Price</Label>
           <Input type="number" placeholder="0.00" onChange={(e) => set("unitPrice", parseFloat(e.target.value) || 0)} />
@@ -480,17 +627,14 @@ function AllocationForm({ ventureId, assemblies, onClose }: { ventureId: string;
             </SelectContent>
           </Select>
         </div>
-      </div>
-      <div className="text-sm text-muted-foreground">
-        Total: <strong>{formatCurrency(form.quantity * form.unitPrice, form.currency as any)}</strong>
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label>Description (optional)</Label>
-        <Input placeholder="e.g. 50 chickens for sale" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <div className="flex flex-col gap-2">
+          <Label>Initial Stock</Label>
+          <Input type="number" placeholder="0" onChange={(e) => set("stock", parseInt(e.target.value) || 0)} />
+        </div>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={loading || !form.assemblyId || !form.quantity || !form.unitPrice}>{loading ? "Saving..." : "Allocate"}</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.name.trim() || !form.unitPrice}>{loading ? "Saving..." : "Add Product"}</Button>
       </DialogFooter>
     </div>
   )

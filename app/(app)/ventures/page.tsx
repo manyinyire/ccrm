@@ -40,12 +40,14 @@ import { useCurrency } from "@/lib/currency-context"
 type VentureExpense = { id: string; date: string; currency: string; amount: number; description: string }
 type VentureAllocation = { id: string; assemblyId: string; assembly: { name: string }; date: string; currency: string; quantity: number; unitPrice: number; totalAmount: number; description: string }
 type VenturePayment = { id: string; assemblyId: string; assembly: { name: string }; date: string; currency: string; amount: number; paymentMethod: string; description: string }
+type VentureProduct = { id: string; name: string; currency: string; unitPrice: number; stock: number }
 type Venture = {
   id: string
   name: string
   description: string
   status: string
   createdAt: string
+  products: VentureProduct[]
   expenses: VentureExpense[]
   allocations: VentureAllocation[]
   payments: VenturePayment[]

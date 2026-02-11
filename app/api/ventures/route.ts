@@ -4,8 +4,9 @@ import { prisma } from "@/lib/prisma"
 export async function GET() {
   const ventures = await prisma.venture.findMany({
     include: {
+      products: true,
       expenses: true,
-      allocations: { include: { assembly: { select: { name: true } } } },
+      allocations: { include: { assembly: { select: { name: true } }, product: { select: { name: true } } } },
       payments: { include: { assembly: { select: { name: true } } } },
     },
     orderBy: { createdAt: "desc" },

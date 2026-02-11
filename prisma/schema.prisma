@@ -79,9 +79,23 @@ model Venture {
   status      VentureStatus @default(ACTIVE)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  products    VentureProduct[]
   expenses    VentureExpense[]
   allocations VentureAllocation[]
   payments    VenturePayment[]
+}
+
+model VentureProduct {
+  id          String              @id @default(cuid())
+  ventureId   String
+  venture     Venture             @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  name        String
+  currency    Currency
+  unitPrice   Float               @default(0)
+  stock       Int                 @default(0)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  allocations VentureAllocation[]
 }
 
 model VentureExpense {
@@ -97,19 +111,21 @@ model VentureExpense {
 }
 
 model VentureAllocation {
-  id          String   @id @default(cuid())
+  id          String          @id @default(cuid())
   ventureId   String
-  venture     Venture  @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  venture     Venture         @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     VentureProduct? @relation(fields: [productId], references: [id])
   assemblyId  String
-  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  assembly    Assembly        @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   date        DateTime
   currency    Currency
-  quantity    Int      @default(0)
-  unitPrice   Float    @default(0)
-  totalAmount Float    @default(0)
-  description String   @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  quantity    Int             @default(0)
+  unitPrice   Float           @default(0)
+  totalAmount Float           @default(0)
+  description String          @default("")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 }
 
 model VenturePayment {

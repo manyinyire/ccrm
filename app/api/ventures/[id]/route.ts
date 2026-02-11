@@ -6,8 +6,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   const venture = await prisma.venture.findUnique({
     where: { id },
     include: {
+      products: { orderBy: { name: "asc" } },
       expenses: { orderBy: { date: "desc" } },
-      allocations: { include: { assembly: { select: { name: true } } }, orderBy: { date: "desc" } },
+      allocations: { include: { assembly: { select: { name: true } }, product: { select: { name: true } } }, orderBy: { date: "desc" } },
       payments: { include: { assembly: { select: { name: true } } }, orderBy: { date: "desc" } },
     },
   })

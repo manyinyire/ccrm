@@ -439,12 +439,12 @@ function UserForm({ user, assemblies, onClose }: { user: AppUser | null; assembl
         </div>
         <div className="flex flex-col gap-2">
           <Label>Assembly {form.role === "ASSEMBLY_LEADER" && <span className="text-destructive">*</span>}</Label>
-          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
+          <Select value={form.assemblyId || "_none"} onValueChange={(v) => set("assemblyId", v === "_none" ? "" : v)}>
             <SelectTrigger>
               <SelectValue placeholder="Select assembly" />
             </SelectTrigger>
             <SelectContent>
-              {form.role !== "ASSEMBLY_LEADER" && <SelectItem value="">All Assemblies</SelectItem>}
+              {form.role !== "ASSEMBLY_LEADER" && <SelectItem value="_none">All Assemblies</SelectItem>}
               {assemblies.filter((a: Assembly) => a.status === "ACTIVE").map((a: Assembly) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}

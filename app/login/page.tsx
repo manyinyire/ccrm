@@ -3,7 +3,9 @@
 import React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
+import { signIn } from "next-auth/react"
 import { Church, Eye, EyeOff, Lock, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,18 +15,40 @@ import { Checkbox } from "@/components/ui/checkbox"
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
 
-  function handleLogin(e: React.FormEvent) {
+  const registered = searchParams.get("registered")
+  const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
+
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-    setTimeout(() => {
+    setError("")
+
+    try {
+      const result = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      })
+
+      if (result?.error) {
+        setError("Invalid email or password")
+        setLoading(false)
+        return
+      }
+
+      router.push(callbackUrl)
+      router.refresh()
+    } catch {
+      setError("Something went wrong. Please try again.")
       setLoading(false)
-      router.push("/dashboard")
-    }, 1200)
+    }
   }
 
   return (
@@ -88,6 +112,18 @@ export default function LoginPage() {
                 Sign in to your account to continue
               </p>
             </div>
+
+            {registered && (
+              <div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
+                Account created successfully! Please sign in.
+              </div>
+            )}
+
+            {error && (
+              <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
 
             <form onSubmit={handleLogin} className="flex flex-col gap-5">
               <div className="flex flex-col gap-2">
@@ -154,12 +190,12 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 rounded-lg bg-muted/60 p-3">
-              <p className="text-xs text-muted-foreground">
-                <span className="font-medium text-foreground">Demo Credentials:</span>{" "}
-                Use any email and password to sign in.
-              </p>
-            </div>
+            <p className="mt-6 text-center text-sm text-muted-foreground">
+              Don&apos;t have an account?{" "}
+              <Link href="/register" className="font-medium text-primary hover:underline">
+                Create account
+              </Link>
+            </p>
           </CardContent>
         </Card>
       </div>

@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { Download, FileText, Printer } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -21,14 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  incomeRecords,
-  expenses,
-  assemblies,
-  getCashAtHand,
-  getFreddyLedger,
-  formatCurrency,
-} from "@/lib/mock-data"
+import { formatCurrency, convertToUSD } from "@/lib/mock-data"
+import type { Assembly, IncomeRecord, Expense } from "@/lib/mock-data"
 import {
   BarChart,
   Bar,
@@ -52,40 +47,60 @@ const COLORS = [
 ]
 
 export default function ReportsPage() {
-  const cash = getCashAtHand()
-  const freddy = getFreddyLedger()
+  const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+
+  useEffect(() => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/assemblies")]).then(
+      async ([incRes, expRes, asmRes]) => {
+        setIncomeRecords(await incRes.json())
+        setExpenses(await expRes.json())
+        setAssemblies(await asmRes.json())
+      }
+    )
+  }, [])
+
+  // Cash at hand computed
+  const cashInUSD = incomeRecords.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.received, 0)
+  const cashOutUSD = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
+  const cashBalance = cashInUSD - cashOutUSD
+
+  // Owed balance computed
+  const owedExpenses = expenses.filter((e) => e.paymentSource === "OWED_PERSON")
+  const owedBalance = owedExpenses.reduce((s, e) => s + convertToUSD(e.amount, e.currency), 0)
 
   // Income by category
   const incomeCategories = [
-    { name: "Offering", value: incomeRecords.reduce((s, r) => s + r.offering, 0) },
-    { name: "Tithe", value: incomeRecords.reduce((s, r) => s + r.tithe, 0) },
-    { name: "Feast Badges", value: incomeRecords.reduce((s, r) => s + r.feastBadges, 0) },
-    { name: "Firewood", value: incomeRecords.reduce((s, r) => s + r.firewood, 0) },
-    { name: "Instruments", value: incomeRecords.reduce((s, r) => s + r.instruments, 0) },
-    { name: "Welfare", value: incomeRecords.reduce((s, r) => s + r.pastorsWelfare, 0) },
+    { name: "Offering", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.offering, r.currency), 0) },
+    { name: "Tithe", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.tithe, r.currency), 0) },
+    { name: "Feast Badges", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.feastBadges, r.currency), 0) },
+    { name: "Firewood", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.firewood, r.currency), 0) },
+    { name: "Instruments", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.instruments, r.currency), 0) },
+    { name: "Welfare", value: incomeRecords.reduce((s, r) => s + convertToUSD(r.pastorsWelfare, r.currency), 0) },
   ]
 
   // Expense by source
   const expenseBySource = [
-    { name: "Cash at Hand", value: expenses.filter((e) => e.paymentSource === "CASH_AT_HAND").reduce((s, e) => s + e.amount, 0) },
-    { name: "Freddy", value: expenses.filter((e) => e.paymentSource === "FREDDY").reduce((s, e) => s + e.amount, 0) },
-    { name: "Pastor", value: expenses.filter((e) => e.paymentSource === "PASTOR").reduce((s, e) => s + e.amount, 0) },
+    { name: "Cash at Hand", value: expenses.filter((e) => e.paymentSource === "CASH_AT_HAND").reduce((s, e) => s + convertToUSD(e.amount, e.currency), 0) },
+    { name: "Owed Person", value: expenses.filter((e) => e.paymentSource === "OWED_PERSON").reduce((s, e) => s + convertToUSD(e.amount, e.currency), 0) },
+    { name: "Pastor", value: expenses.filter((e) => e.paymentSource === "PASTOR").reduce((s, e) => s + convertToUSD(e.amount, e.currency), 0) },
   ]
 
   // Assembly summary
   const assemblySummary = assemblies
-    .filter((a) => a.status === "active")
+    .filter((a) => a.status === "ACTIVE")
     .map((a) => {
       const income = incomeRecords.filter((r) => r.assemblyId === a.id)
       const exp = expenses.filter((e) => e.assemblyId === a.id)
       return {
         name: a.name,
         leader: a.leader,
-        totalIncome: income.reduce((s, r) => s + r.totalAmount, 0),
-        totalExpenses: exp.reduce((s, e) => s + e.amount, 0),
+        totalIncome: income.reduce((s, r) => s + convertToUSD(r.totalAmount, r.currency), 0),
+        totalExpenses: exp.reduce((s, e) => s + convertToUSD(e.amount, e.currency), 0),
         totalAttendance: income.reduce((s, r) => s + r.adults + r.children, 0),
         newSouls: income.reduce((s, r) => s + r.newSouls, 0),
-        balance: income.reduce((s, r) => s + r.balance, 0),
+        balance: income.reduce((s, r) => s + convertToUSD(r.balance, r.currency), 0),
       }
     })
 
@@ -153,13 +168,13 @@ export default function ReportsPage() {
               <Card>
                 <CardContent className="p-4">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Cash at Hand</span>
-                  <p className="mt-1 text-xl font-bold text-success">{formatCurrency(cash.balance)}</p>
+                  <p className="mt-1 text-xl font-bold text-success">{formatCurrency(cashBalance)}</p>
                 </CardContent>
               </Card>
               <Card>
                 <CardContent className="p-4">
-                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Owed to Freddy</span>
-                  <p className="mt-1 text-xl font-bold text-warning">{formatCurrency(freddy.balance)}</p>
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Owed</span>
+                  <p className="mt-1 text-xl font-bold text-warning">{formatCurrency(owedBalance)}</p>
                 </CardContent>
               </Card>
             </div>

@@ -1,0 +1,190 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  TREASURER
+  VIEWER
+}
+
+enum Currency {
+  USD
+  ZWL
+}
+
+enum AssemblyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PaymentSource {
+  OWED_PERSON
+  CASH_AT_HAND
+  PASTOR
+}
+
+enum ExpenseStatus {
+  OWED
+  PARTIAL
+  PAID
+}
+
+enum AssetCategory {
+  EQUIPMENT
+  VEHICLE
+  FURNITURE
+  ELECTRONICS
+  PROPERTY
+  OTHER
+}
+
+enum AssetCondition {
+  EXCELLENT
+  GOOD
+  FAIR
+  POOR
+  DAMAGED
+}
+
+model User {
+  id         String   @id @default(cuid())
+  name       String
+  email      String   @unique
+  password   String
+  role       Role     @default(VIEWER)
+  assemblyId String?
+  assembly   Assembly? @relation(fields: [assemblyId], references: [id])
+  status     String   @default("active")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Assembly {
+  id        String         @id @default(cuid())
+  name      String
+  location  String
+  leader    String
+  status    AssemblyStatus @default(ACTIVE)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  users     User[]
+  incomes   Income[]
+  expenses  Expense[]
+  assets    Asset[]
+}
+
+model IncomeItem {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ExpenseCategory {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Income {
+  id             String   @id @default(cuid())
+  assemblyId     String
+  assembly       Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  date           DateTime
+  currency       Currency
+  adults         Int      @default(0)
+  children       Int      @default(0)
+  newSouls       Int      @default(0)
+  offering       Float    @default(0)
+  tithe          Float    @default(0)
+  feastBadges    Float    @default(0)
+  firewood       Float    @default(0)
+  instruments    Float    @default(0)
+  pastorsWelfare Float    @default(0)
+  customItems    Json     @default("{}")
+  totalAmount    Float    @default(0)
+  sentToPastor   Float    @default(0)
+  received       Float    @default(0)
+  balance        Float    @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model OwedPerson {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String    @default("")
+  role      String    @default("")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expenses  Expense[]
+  refunds   Refund[]
+}
+
+model Expense {
+  id            String        @id @default(cuid())
+  assemblyId    String
+  assembly      Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  date          DateTime
+  currency      Currency
+  event         String
+  description   String
+  category      String        @default("")
+  amount        Float
+  paidTo        String
+  paymentSource PaymentSource
+  owedPersonId  String?
+  owedPerson    OwedPerson?   @relation(fields: [owedPersonId], references: [id])
+  status        ExpenseStatus @default(PAID)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  refunds       Refund[]
+}
+
+model Refund {
+  id           String     @id @default(cuid())
+  expenseId    String
+  expense      Expense    @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  owedPersonId String
+  owedPerson   OwedPerson @relation(fields: [owedPersonId], references: [id])
+  amount       Float
+  currency     Currency
+  date         DateTime
+  note         String     @default("")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Asset {
+  id            String         @id @default(cuid())
+  name          String
+  category      AssetCategory
+  assemblyId    String
+  assembly      Assembly       @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  purchaseDate  DateTime
+  purchasePrice Float
+  currency      Currency
+  currentValue  Float
+  condition     AssetCondition
+  location      String
+  assignedTo    String?
+  serialNumber  String?
+  notes         String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}

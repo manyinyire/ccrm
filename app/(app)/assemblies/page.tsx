@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
   Search,
@@ -32,6 +32,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -40,11 +50,37 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { assemblies, incomeRecords, expenses, formatCurrency } from "@/lib/mock-data"
+import { formatCurrency, convertToUSD } from "@/lib/mock-data"
+import type { Assembly, IncomeRecord, Expense } from "@/lib/mock-data"
 
 export default function AssembliesPage() {
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingAssembly, setEditingAssembly] = useState<Assembly | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+  const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+
+  const fetchData = useCallback(async () => {
+    const [asmRes, incRes, expRes] = await Promise.all([
+      fetch("/api/assemblies"),
+      fetch("/api/income"),
+      fetch("/api/expenses"),
+    ])
+    setAssemblies(await asmRes.json())
+    setIncomeRecords(await incRes.json())
+    setExpenses(await expRes.json())
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleDelete = async () => {
+    if (!deleteId) return
+    await fetch(`/api/assemblies/${deleteId}`, { method: "DELETE" })
+    setDeleteId(null)
+    fetchData()
+  }
 
   const filtered = assemblies.filter(
     (a) =>
@@ -60,7 +96,7 @@ export default function AssembliesPage() {
         description="Manage church assembly locations and leaders"
         breadcrumb="Assemblies"
       >
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingAssembly(null) }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -69,10 +105,13 @@ export default function AssembliesPage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>New Assembly</DialogTitle>
-              <DialogDescription>Add a new church assembly to the system.</DialogDescription>
+              <DialogTitle>{editingAssembly ? "Edit Assembly" : "New Assembly"}</DialogTitle>
+              <DialogDescription>{editingAssembly ? "Update assembly details." : "Add a new church assembly to the system."}</DialogDescription>
             </DialogHeader>
-            <AssemblyForm onClose={() => setDialogOpen(false)} />
+            <AssemblyForm
+              assembly={editingAssembly}
+              onClose={() => { setDialogOpen(false); setEditingAssembly(null); fetchData() }}
+            />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -94,10 +133,10 @@ export default function AssembliesPage() {
           {filtered.map((assembly) => {
             const assemblyIncome = incomeRecords
               .filter((r) => r.assemblyId === assembly.id)
-              .reduce((sum, r) => sum + r.totalAmount, 0)
+              .reduce((sum, r) => sum + convertToUSD(r.totalAmount, r.currency), 0)
             const assemblyExpenses = expenses
               .filter((e) => e.assemblyId === assembly.id)
-              .reduce((sum, e) => sum + e.amount, 0)
+              .reduce((sum, e) => sum + convertToUSD(e.amount, e.currency), 0)
             const totalAttendance = incomeRecords
               .filter((r) => r.assemblyId === assembly.id)
               .reduce((sum, r) => sum + r.adults + r.children, 0)
@@ -119,12 +158,12 @@ export default function AssembliesPage() {
                     <Badge
                       variant="outline"
                       className={
-                        assembly.status === "active"
+                        assembly.status === "ACTIVE"
                           ? "bg-success/10 text-success border-success/20"
                           : "bg-muted text-muted-foreground"
                       }
                     >
-                      {assembly.status}
+                      {assembly.status === "ACTIVE" ? "active" : "inactive"}
                     </Badge>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -133,11 +172,11 @@ export default function AssembliesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => { setEditingAssembly(assembly); setDialogOpen(true) }}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive">
+                        <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(assembly.id)}>
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete
                         </DropdownMenuItem>
@@ -175,40 +214,83 @@ export default function AssembliesPage() {
           })}
         </div>
       </div>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={!!deleteId} onOpenChange={(open) => { if (!open) setDeleteId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Assembly</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure? This will also delete all income, expenses, and assets linked to this assembly. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={handleDelete}>
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   )
 }
 
-function AssemblyForm({ onClose }: { onClose: () => void }) {
+function AssemblyForm({ assembly, onClose }: { assembly: Assembly | null; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [name, setName] = useState(assembly?.name || "")
+  const [location, setLocation] = useState(assembly?.location || "")
+  const [leader, setLeader] = useState(assembly?.leader || "")
+  const [status, setStatus] = useState(assembly?.status || "ACTIVE")
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    if (assembly) {
+      await fetch(`/api/assemblies/${assembly.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, location, leader, status }),
+      })
+    } else {
+      await fetch("/api/assemblies", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, location, leader, status }),
+      })
+    }
+    setLoading(false)
+    onClose()
+  }
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="name">Assembly Name</Label>
-        <Input id="name" placeholder="e.g. Grace Assembly" />
+        <Input id="name" placeholder="e.g. Grace Assembly" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="location">Location</Label>
-        <Input id="location" placeholder="e.g. Downtown" />
+        <Input id="location" placeholder="e.g. Downtown" value={location} onChange={(e) => setLocation(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="leader">Leader</Label>
-        <Input id="leader" placeholder="e.g. Pastor James" />
+        <Input id="leader" placeholder="e.g. Pastor James" value={leader} onChange={(e) => setLeader(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label>Status</Label>
-        <Select defaultValue="active">
+        <Select value={status} onValueChange={setStatus}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="active">Active</SelectItem>
-            <SelectItem value="inactive">Inactive</SelectItem>
+            <SelectItem value="ACTIVE">Active</SelectItem>
+            <SelectItem value="INACTIVE">Inactive</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Save Assembly</Button>
+        <Button onClick={handleSubmit} disabled={loading || !name}>{loading ? "Saving..." : assembly ? "Update Assembly" : "Save Assembly"}</Button>
       </DialogFooter>
     </div>
   )

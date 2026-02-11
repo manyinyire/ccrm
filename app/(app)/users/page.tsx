@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
   Search,
@@ -61,7 +61,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { appUsers, assemblies, roleLabels } from "@/lib/mock-data"
+import { roleLabels } from "@/lib/mock-data"
+import type { AppUser, Assembly } from "@/lib/mock-data"
 
 const statusStyles: Record<string, string> = {
   active: "bg-success/10 text-success border-success/20",
@@ -70,10 +71,10 @@ const statusStyles: Record<string, string> = {
 }
 
 const roleStyles: Record<string, string> = {
-  super_admin: "bg-primary/10 text-primary border-primary/20",
-  admin: "bg-[hsl(213,94%,40%)]/10 text-[hsl(213,94%,40%)] border-[hsl(213,94%,40%)]/20",
-  treasurer: "bg-success/10 text-success border-success/20",
-  viewer: "bg-muted text-muted-foreground",
+  SUPER_ADMIN: "bg-primary/10 text-primary border-primary/20",
+  ADMIN: "bg-[hsl(213,94%,40%)]/10 text-[hsl(213,94%,40%)] border-[hsl(213,94%,40%)]/20",
+  TREASURER: "bg-success/10 text-success border-success/20",
+  VIEWER: "bg-muted text-muted-foreground",
 }
 
 export default function UsersPage() {
@@ -83,6 +84,37 @@ export default function UsersPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [appUsers, setAppUsers] = useState<AppUser[]>([])
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+
+  const fetchData = useCallback(async () => {
+    const [usrRes, asmRes] = await Promise.all([
+      fetch("/api/users"),
+      fetch("/api/assemblies"),
+    ])
+    setAppUsers(await usrRes.json())
+    setAssemblies(await asmRes.json())
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleDelete = async () => {
+    if (!selectedUserId) return
+    await fetch(`/api/users/${selectedUserId}`, { method: "DELETE" })
+    setDeleteDialogOpen(false)
+    setSelectedUserId(null)
+    fetchData()
+  }
+
+  const handleToggleStatus = async (userId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "active" ? "deactivated" : "active"
+    await fetch(`/api/users/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: newStatus }),
+    })
+    fetchData()
+  }
 
   const filtered = appUsers.filter((u) => {
     const matchesSearch =
@@ -117,7 +149,7 @@ export default function UsersPage() {
                 Create a new user account for the Church CRM system.
               </DialogDescription>
             </DialogHeader>
-            <UserForm onClose={() => setDialogOpen(false)} />
+            <UserForm assemblies={assemblies} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -141,7 +173,7 @@ export default function UsersPage() {
             <CardContent className="p-4">
               <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Admins</span>
               <p className="mt-1 text-2xl font-bold text-primary">
-                {appUsers.filter((u) => u.role === "admin" || u.role === "super_admin").length}
+                {appUsers.filter((u) => u.role === "ADMIN" || u.role === "SUPER_ADMIN").length}
               </p>
             </CardContent>
           </Card>
@@ -172,10 +204,10 @@ export default function UsersPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Roles</SelectItem>
-              <SelectItem value="super_admin">Super Admin</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="treasurer">Treasurer</SelectItem>
-              <SelectItem value="viewer">Viewer</SelectItem>
+              <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+              <SelectItem value="ADMIN">Admin</SelectItem>
+              <SelectItem value="TREASURER">Treasurer</SelectItem>
+              <SelectItem value="VIEWER">Viewer</SelectItem>
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -244,7 +276,7 @@ export default function UsersPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(user.lastLogin).toLocaleDateString("en-GB", {
+                      {new Date(user.updatedAt || user.createdAt).toLocaleDateString("en-GB", {
                         day: "numeric",
                         month: "short",
                         year: "numeric",
@@ -271,12 +303,12 @@ export default function UsersPage() {
                             Edit User
                           </DropdownMenuItem>
                           {user.status === "active" ? (
-                            <DropdownMenuItem className="text-warning">
+                            <DropdownMenuItem className="text-warning" onClick={() => handleToggleStatus(user.id, user.status)}>
                               <UserX className="mr-2 h-4 w-4" />
                               Deactivate
                             </DropdownMenuItem>
                           ) : (
-                            <DropdownMenuItem className="text-success">
+                            <DropdownMenuItem className="text-success" onClick={() => handleToggleStatus(user.id, user.status)}>
                               <UserCheck className="mr-2 h-4 w-4" />
                               Activate
                             </DropdownMenuItem>
@@ -316,7 +348,7 @@ export default function UsersPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => setDeleteDialogOpen(false)}
+              onClick={handleDelete}
             >
               Delete
             </AlertDialogAction>
@@ -327,43 +359,68 @@ export default function UsersPage() {
   )
 }
 
-function UserForm({ onClose }: { onClose: () => void }) {
+function UserForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    password: "",
+    role: "VIEWER",
+    assemblyId: "",
+  })
+
+  const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    await fetch("/api/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        assemblyId: form.assemblyId || null,
+      }),
+    })
+    setLoading(false)
+    onClose()
+  }
+
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="userName">Full Name</Label>
-          <Input id="userName" placeholder="e.g. John Moyo" />
+          <Input id="userName" placeholder="e.g. John Moyo" value={form.name} onChange={(e) => set("name", e.target.value)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="userEmail">Email</Label>
-          <Input id="userEmail" type="email" placeholder="john@church.org" />
+          <Input id="userEmail" type="email" placeholder="john@church.org" value={form.email} onChange={(e) => set("email", e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Role</Label>
-          <Select defaultValue="viewer">
+          <Select value={form.role} onValueChange={(v) => set("role", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="super_admin">Super Admin</SelectItem>
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="treasurer">Treasurer</SelectItem>
-              <SelectItem value="viewer">Viewer</SelectItem>
+              <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+              <SelectItem value="ADMIN">Admin</SelectItem>
+              <SelectItem value="TREASURER">Treasurer</SelectItem>
+              <SelectItem value="VIEWER">Viewer</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="flex flex-col gap-2">
           <Label>Assembly</Label>
-          <Select>
+          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
             <SelectTrigger>
               <SelectValue placeholder="Select assembly" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Assemblies</SelectItem>
-              {assemblies.filter((a) => a.status === "active").map((a) => (
+              <SelectItem value="">All Assemblies</SelectItem>
+              {assemblies.filter((a: Assembly) => a.status === "ACTIVE").map((a: Assembly) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -372,11 +429,11 @@ function UserForm({ onClose }: { onClose: () => void }) {
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="userPassword">Temporary Password</Label>
-        <Input id="userPassword" type="password" placeholder="Set initial password" />
+        <Input id="userPassword" type="password" placeholder="Set initial password" value={form.password} onChange={(e) => set("password", e.target.value)} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Create User</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.name || !form.email || !form.password}>{loading ? "Creating..." : "Create User"}</Button>
       </DialogFooter>
     </div>
   )

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { Plus, Search, Download, FileText } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { Plus, Search, Download, FileText, Trash2, Settings } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,17 +33,20 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import { expenses, assemblies, owedPersons, formatCurrency, convertToUSD } from "@/lib/mock-data"
+import { formatCurrency, convertToUSD } from "@/lib/mock-data"
+import type { Assembly, Expense, OwedPerson } from "@/lib/mock-data"
 import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 
-const statusStyles = {
+type ExpCatDef = { id: string; name: string; isDefault: boolean; sortOrder: number }
+
+const statusStyles: Record<string, string> = {
   PAID: "bg-success/10 text-success border-success/20",
   PARTIAL: "bg-warning/10 text-warning border-warning/20",
   OWED: "bg-destructive/10 text-destructive border-destructive/20",
 }
 
-const sourceLabels = {
+const sourceLabels: Record<string, string> = {
   OWED_PERSON: "Owed Person",
   CASH_AT_HAND: "Cash at Hand",
   PASTOR: "Pastor",
@@ -55,6 +58,26 @@ export default function ExpensesPage() {
   const [assemblyFilter, setAssemblyFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [catDialogOpen, setCatDialogOpen] = useState(false)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+  const [owedPersons, setOwedPersons] = useState<OwedPerson[]>([])
+  const [expenseCategories, setExpenseCategories] = useState<ExpCatDef[]>([])
+
+  const fetchData = useCallback(async () => {
+    const [expRes, asmRes, opRes, catRes] = await Promise.all([
+      fetch("/api/expenses"),
+      fetch("/api/assemblies"),
+      fetch("/api/owed-persons"),
+      fetch("/api/expense-categories"),
+    ])
+    setExpenses(await expRes.json())
+    setAssemblies(await asmRes.json())
+    setOwedPersons(await opRes.json())
+    setExpenseCategories(await catRes.json())
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
 
   const filtered = expenses.filter((e) => {
     const matchesSearch =
@@ -72,7 +95,7 @@ export default function ExpensesPage() {
 
   function handleExportCSV() {
     const rows = filtered.map((e) => {
-      const person = e.owedPersonId ? owedPersons.find((p) => p.id === e.owedPersonId)?.name : ""
+      const person = e.owedPersonName || (e.owedPersonId ? owedPersons.find((p) => p.id === e.owedPersonId)?.name : "")
       return {
         Date: e.date,
         Assembly: e.assemblyName,
@@ -104,6 +127,21 @@ export default function ExpensesPage() {
           <FileText className="mr-2 h-4 w-4" />
           PDF
         </Button>
+        <Dialog open={catDialogOpen} onOpenChange={setCatDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm">
+              <Settings className="mr-2 h-4 w-4" />
+              Categories
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Expense Categories</DialogTitle>
+              <DialogDescription>Add or remove expense categories. Default categories cannot be deleted.</DialogDescription>
+            </DialogHeader>
+            <ExpenseCategoryManager categories={expenseCategories} onUpdate={fetchData} />
+          </DialogContent>
+        </Dialog>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -116,7 +154,7 @@ export default function ExpensesPage() {
               <DialogTitle>New Expense</DialogTitle>
               <DialogDescription>Record a new expense for an assembly.</DialogDescription>
             </DialogHeader>
-            <ExpenseForm onClose={() => setDialogOpen(false)} />
+            <ExpenseForm assemblies={assemblies} owedPersons={owedPersons} categories={expenseCategories} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -167,7 +205,7 @@ export default function ExpensesPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Assemblies</SelectItem>
-              {assemblies.filter(a => a.status === "active").map((a) => (
+              {assemblies.filter(a => a.status === "ACTIVE").map((a) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -205,9 +243,7 @@ export default function ExpensesPage() {
               </TableHeader>
               <TableBody>
                 {filtered.map((expense) => {
-                  const person = expense.owedPersonId
-                    ? owedPersons.find((p) => p.id === expense.owedPersonId)
-                    : null
+                  const personName = expense.owedPersonName || (expense.owedPersonId ? owedPersons.find((p) => p.id === expense.owedPersonId)?.name : null)
                   return (
                     <TableRow key={expense.id}>
                       <TableCell className="font-medium">
@@ -237,8 +273,8 @@ export default function ExpensesPage() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        {person ? (
-                          <span className="text-sm font-medium">{person.name}</span>
+                        {personName ? (
+                          <span className="text-sm font-medium">{personName}</span>
                         ) : (
                           <span className="text-xs text-muted-foreground">-</span>
                         )}
@@ -263,24 +299,104 @@ export default function ExpensesPage() {
   )
 }
 
-function ExpenseForm({ onClose }: { onClose: () => void }) {
-  const [source, setSource] = useState("CASH_AT_HAND")
+function ExpenseCategoryManager({ categories, onUpdate }: { categories: ExpCatDef[]; onUpdate: () => void }) {
+  const [newName, setNewName] = useState("")
+  const [adding, setAdding] = useState(false)
+
+  const handleAdd = async () => {
+    if (!newName.trim()) return
+    setAdding(true)
+    await fetch("/api/expense-categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName.trim() }),
+    })
+    setNewName("")
+    setAdding(false)
+    onUpdate()
+  }
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/expense-categories/${id}`, { method: "DELETE" })
+    onUpdate()
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+        {categories.map((cat) => (
+          <div key={cat.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">{cat.name}</span>
+              {cat.isDefault && <Badge variant="secondary" className="text-[10px]">Default</Badge>}
+            </div>
+            {!cat.isDefault && (
+              <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => handleDelete(cat.id)}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <Input placeholder="New category name..." value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleAdd()} />
+        <Button onClick={handleAdd} disabled={adding || !newName.trim()} size="sm">
+          <Plus className="mr-1 h-4 w-4" />
+          Add
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ExpenseForm({ assemblies, owedPersons, categories, onClose }: { assemblies: Assembly[]; owedPersons: OwedPerson[]; categories: ExpCatDef[]; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    date: new Date().toISOString().split("T")[0],
+    assemblyId: assemblies.find(a => a.status === "ACTIVE")?.id || "",
+    currency: "USD",
+    event: "",
+    description: "",
+    category: "",
+    amount: 0,
+    paidTo: "",
+    paymentSource: "CASH_AT_HAND",
+    owedPersonId: "",
+    status: "PAID",
+  })
+
+  const set = (key: string, value: string | number) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    await fetch("/api/expenses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        amount: parseFloat(String(form.amount)) || 0,
+        owedPersonId: form.paymentSource === "OWED_PERSON" ? form.owedPersonId : null,
+      }),
+    })
+    setLoading(false)
+    onClose()
+  }
 
   return (
     <div className="grid gap-4">
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="date">Date</Label>
-          <Input id="date" type="date" defaultValue="2026-02-11" />
+          <Input id="date" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="assembly">Assembly</Label>
-          <Select defaultValue="1">
+          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {assemblies.filter(a => a.status === "active").map((a) => (
+              {assemblies.filter(a => a.status === "ACTIVE").map((a) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -288,7 +404,7 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex flex-col gap-2">
           <Label>Currency</Label>
-          <Select defaultValue="USD">
+          <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -302,29 +418,44 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
 
       <div className="flex flex-col gap-2">
         <Label htmlFor="event">Event</Label>
-        <Input id="event" placeholder="e.g. Sunday Service, Youth Conference" />
+        <Input id="event" placeholder="e.g. Sunday Service, Youth Conference" value={form.event} onChange={(e) => set("event", e.target.value)} />
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea id="description" placeholder="Describe the expense..." rows={2} />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="description">Description</Label>
+          <Textarea id="description" placeholder="Describe the expense..." rows={2} value={form.description} onChange={(e) => set("description", e.target.value)} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Category</Label>
+          <Select value={form.category} onValueChange={(v) => set("category", v)}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="amount">Amount</Label>
-          <Input id="amount" type="number" placeholder="0" />
+          <Input id="amount" type="number" placeholder="0" onChange={(e) => set("amount", parseFloat(e.target.value) || 0)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="paidTo">Paid To</Label>
-          <Input id="paidTo" placeholder="Recipient name" />
+          <Input id="paidTo" placeholder="Recipient name" value={form.paidTo} onChange={(e) => set("paidTo", e.target.value)} />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="source">Payment Source</Label>
-          <Select value={source} onValueChange={setSource}>
+          <Select value={form.paymentSource} onValueChange={(v) => set("paymentSource", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -335,10 +466,10 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
             </SelectContent>
           </Select>
         </div>
-        {source === "OWED_PERSON" && (
+        {form.paymentSource === "OWED_PERSON" && (
           <div className="flex flex-col gap-2">
             <Label>Owed Person</Label>
-            <Select>
+            <Select value={form.owedPersonId} onValueChange={(v) => set("owedPersonId", v)}>
               <SelectTrigger>
                 <SelectValue placeholder="Select person" />
               </SelectTrigger>
@@ -350,10 +481,10 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
             </Select>
           </div>
         )}
-        {source !== "OWED_PERSON" && (
+        {form.paymentSource !== "OWED_PERSON" && (
           <div className="flex flex-col gap-2">
             <Label htmlFor="status">Status</Label>
-            <Select defaultValue="PAID">
+            <Select value={form.status} onValueChange={(v) => set("status", v)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -369,7 +500,7 @@ function ExpenseForm({ onClose }: { onClose: () => void }) {
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Save Expense</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.assemblyId || !form.description}>{loading ? "Saving..." : "Save Expense"}</Button>
       </DialogFooter>
     </div>
   )

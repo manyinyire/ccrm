@@ -1,7 +1,8 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
+import { useSession, signOut } from "next-auth/react"
 import {
   LayoutDashboard,
   DollarSign,
@@ -55,8 +56,18 @@ const adminNav = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
+  const { data: session } = useSession()
   const { currency, setCurrency } = useCurrency()
+
+  const userName = session?.user?.name || "User"
+  const userRole = (session?.user as any)?.role || "USER"
+  const initials = userName
+    .split(" ")
+    .map((n: string) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+  const roleLabel = userRole === "SUPER_ADMIN" ? "Super Admin" : userRole === "ADMIN" ? "Admin" : "User"
 
   return (
     <Sidebar collapsible="icon">
@@ -147,19 +158,19 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Freddy Moyo (Super Admin)">
+            <div className="flex w-full items-center gap-2 rounded-md px-2 py-1.5">
               <Avatar className="h-6 w-6">
                 <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-[10px]">
-                  FM
+                  {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex flex-1 items-center justify-between group-data-[collapsible=icon]:hidden">
                 <div className="flex flex-col">
-                  <span className="text-xs font-medium text-sidebar-primary-foreground">Freddy Moyo</span>
-                  <span className="text-[10px] text-sidebar-foreground/60">Super Admin</span>
+                  <span className="text-xs font-medium text-sidebar-primary-foreground">{userName}</span>
+                  <span className="text-[10px] text-sidebar-foreground/60">{roleLabel}</span>
                 </div>
                 <button
-                  onClick={() => router.push("/login")}
+                  onClick={() => signOut({ callbackUrl: "/login" })}
                   className="rounded-md p-1.5 text-sidebar-foreground/50 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   title="Sign out"
                 >
@@ -167,7 +178,7 @@ export function AppSidebar() {
                   <span className="sr-only">Sign out</span>
                 </button>
               </div>
-            </SidebarMenuButton>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -2,7 +2,7 @@
 
 import React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
   Search,
@@ -60,14 +60,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Progress } from "@/components/ui/progress"
 import {
-  assets,
-  assemblies,
   formatCurrency,
   categoryLabels,
   conditionLabels,
   convertToUSD,
 } from "@/lib/mock-data"
-import type { Asset } from "@/lib/mock-data"
+import type { Asset, Assembly } from "@/lib/mock-data"
 import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 import {
@@ -92,21 +90,21 @@ const COLORS = [
   "hsl(190, 60%, 45%)",
 ]
 
-const categoryIcons: Record<Asset["category"], React.ElementType> = {
-  equipment: Wrench,
-  vehicle: Car,
-  furniture: Armchair,
-  electronics: Monitor,
-  property: Building2,
-  other: Package,
+const categoryIcons: Record<string, React.ElementType> = {
+  EQUIPMENT: Wrench,
+  VEHICLE: Car,
+  FURNITURE: Armchair,
+  ELECTRONICS: Monitor,
+  PROPERTY: Building2,
+  OTHER: Package,
 }
 
-const conditionStyles: Record<Asset["condition"], string> = {
-  excellent: "bg-success/10 text-success border-success/20",
-  good: "bg-primary/10 text-primary border-primary/20",
-  fair: "bg-warning/10 text-warning border-warning/20",
-  poor: "bg-destructive/10 text-destructive border-destructive/20",
-  damaged: "bg-destructive/10 text-destructive border-destructive/20",
+const conditionStyles: Record<string, string> = {
+  EXCELLENT: "bg-success/10 text-success border-success/20",
+  GOOD: "bg-primary/10 text-primary border-primary/20",
+  FAIR: "bg-warning/10 text-warning border-warning/20",
+  POOR: "bg-destructive/10 text-destructive border-destructive/20",
+  DAMAGED: "bg-destructive/10 text-destructive border-destructive/20",
 }
 
 export default function AssetsPage() {
@@ -115,6 +113,24 @@ export default function AssetsPage() {
   const [categoryFilter, setCategoryFilter] = useState("all")
   const [assemblyFilter, setAssemblyFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [assets, setAssets] = useState<Asset[]>([])
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+
+  const fetchData = useCallback(async () => {
+    const [astRes, asmRes] = await Promise.all([
+      fetch("/api/assets"),
+      fetch("/api/assemblies"),
+    ])
+    setAssets(await astRes.json())
+    setAssemblies(await asmRes.json())
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
+
+  const handleDelete = async (id: string) => {
+    await fetch(`/api/assets/${id}`, { method: "DELETE" })
+    fetchData()
+  }
 
   const filtered = assets.filter((a) => {
     const matchesSearch =
@@ -126,28 +142,28 @@ export default function AssetsPage() {
   })
 
   // Calculate totals in USD equiv
-  const totalPurchaseValue = assets.reduce((s, a) => s + convertToUSD(a.purchasePrice, a.currency), 0)
-  const totalCurrentValue = assets.reduce((s, a) => s + convertToUSD(a.currentValue, a.currency), 0)
+  const totalPurchaseValue = assets.reduce((s: number, a: Asset) => s + convertToUSD(a.purchasePrice, a.currency), 0)
+  const totalCurrentValue = assets.reduce((s: number, a: Asset) => s + convertToUSD(a.currentValue, a.currency), 0)
   const totalDepreciation = totalPurchaseValue - totalCurrentValue
 
   // Category breakdown for pie chart
   const categoryData = Object.keys(categoryLabels).map((cat) => {
-    const catAssets = assets.filter((a) => a.category === cat)
+    const catAssets = assets.filter((a: Asset) => a.category === cat)
     return {
-      name: categoryLabels[cat as Asset["category"]],
-      value: catAssets.reduce((s, a) => s + convertToUSD(a.currentValue, a.currency), 0),
+      name: categoryLabels[cat],
+      value: catAssets.reduce((s: number, a: Asset) => s + convertToUSD(a.currentValue, a.currency), 0),
       count: catAssets.length,
     }
   }).filter((c) => c.count > 0)
 
   // Assembly breakdown for bar chart
   const assemblyAssetData = assemblies
-    .filter((a) => a.status === "active")
-    .map((asm) => {
-      const asmAssets = assets.filter((a) => a.assemblyId === asm.id)
+    .filter((a: Assembly) => a.status === "ACTIVE")
+    .map((asm: Assembly) => {
+      const asmAssets = assets.filter((a: Asset) => a.assemblyId === asm.id)
       return {
         name: asm.name.replace(" Assembly", ""),
-        value: asmAssets.reduce((s, a) => s + convertToUSD(a.currentValue, a.currency), 0),
+        value: asmAssets.reduce((s: number, a: Asset) => s + convertToUSD(a.currentValue, a.currency), 0),
         count: asmAssets.length,
       }
     })
@@ -198,7 +214,7 @@ export default function AssetsPage() {
                 Add a new asset to the church register.
               </DialogDescription>
             </DialogHeader>
-            <AssetForm onClose={() => setDialogOpen(false)} />
+            <AssetForm assemblies={assemblies} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -318,7 +334,7 @@ export default function AssetsPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Assemblies</SelectItem>
-              {assemblies.filter((a) => a.status === "active").map((a) => (
+              {assemblies.filter((a: Assembly) => a.status === "ACTIVE").map((a: Assembly) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -408,7 +424,7 @@ export default function AssetsPage() {
                               <Pencil className="mr-2 h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(asset.id)}>
                               <Trash2 className="mr-2 h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
@@ -427,17 +443,49 @@ export default function AssetsPage() {
   )
 }
 
-function AssetForm({ onClose }: { onClose: () => void }) {
+function AssetForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [form, setForm] = useState({
+    name: "",
+    category: "EQUIPMENT",
+    assemblyId: assemblies.find((a: Assembly) => a.status === "ACTIVE")?.id || "",
+    purchasePrice: 0,
+    currency: "USD",
+    purchaseDate: new Date().toISOString().split("T")[0],
+    condition: "GOOD",
+    location: "",
+    serialNumber: "",
+    assignedTo: "",
+    notes: "",
+  })
+
+  const set = (key: string, value: string | number) => setForm((f) => ({ ...f, [key]: value }))
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    await fetch("/api/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+        purchasePrice: parseFloat(String(form.purchasePrice)) || 0,
+        currentValue: parseFloat(String(form.purchasePrice)) || 0,
+      }),
+    })
+    setLoading(false)
+    onClose()
+  }
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="assetName">Asset Name</Label>
-        <Input id="assetName" placeholder="e.g. Yamaha Sound System" />
+        <Input id="assetName" placeholder="e.g. Yamaha Sound System" value={form.name} onChange={(e) => set("name", e.target.value)} />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Category</Label>
-          <Select defaultValue="equipment">
+          <Select value={form.category} onValueChange={(v) => set("category", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -450,12 +498,12 @@ function AssetForm({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex flex-col gap-2">
           <Label>Assembly</Label>
-          <Select defaultValue="1">
+          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {assemblies.filter((a) => a.status === "active").map((a) => (
+              {assemblies.filter((a: Assembly) => a.status === "ACTIVE").map((a: Assembly) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -465,11 +513,11 @@ function AssetForm({ onClose }: { onClose: () => void }) {
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="purchasePrice">Purchase Price</Label>
-          <Input id="purchasePrice" type="number" placeholder="0" />
+          <Input id="purchasePrice" type="number" placeholder="0" onChange={(e) => set("purchasePrice", parseFloat(e.target.value) || 0)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label>Currency</Label>
-          <Select defaultValue="USD">
+          <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -481,13 +529,13 @@ function AssetForm({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="purchaseDate">Purchase Date</Label>
-          <Input id="purchaseDate" type="date" />
+          <Input id="purchaseDate" type="date" value={form.purchaseDate} onChange={(e) => set("purchaseDate", e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Condition</Label>
-          <Select defaultValue="good">
+          <Select value={form.condition} onValueChange={(v) => set("condition", v)}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -500,26 +548,26 @@ function AssetForm({ onClose }: { onClose: () => void }) {
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="assetLocation">Location</Label>
-          <Input id="assetLocation" placeholder="e.g. Main Hall" />
+          <Input id="assetLocation" placeholder="e.g. Main Hall" value={form.location} onChange={(e) => set("location", e.target.value)} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="serialNumber">Serial Number</Label>
-          <Input id="serialNumber" placeholder="Optional" />
+          <Input id="serialNumber" placeholder="Optional" value={form.serialNumber} onChange={(e) => set("serialNumber", e.target.value)} />
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="assignedTo">Assigned To</Label>
-          <Input id="assignedTo" placeholder="Optional" />
+          <Input id="assignedTo" placeholder="Optional" value={form.assignedTo} onChange={(e) => set("assignedTo", e.target.value)} />
         </div>
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="assetNotes">Notes</Label>
-        <Textarea id="assetNotes" placeholder="Additional notes..." rows={2} />
+        <Textarea id="assetNotes" placeholder="Additional notes..." rows={2} value={form.notes} onChange={(e) => set("notes", e.target.value)} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Register Asset</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.name || !form.assemblyId}>{loading ? "Saving..." : "Register Asset"}</Button>
       </DialogFooter>
     </div>
   )

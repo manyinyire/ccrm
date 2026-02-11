@@ -1,8 +1,10 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { incomeRecords, expenses, formatCurrency } from "@/lib/mock-data"
+import { formatCurrency } from "@/lib/mock-data"
+import type { IncomeRecord, Expense } from "@/lib/mock-data"
 import { ArrowDownLeft, ArrowUpRight } from "lucide-react"
 
 type ActivityItem = {
@@ -14,7 +16,7 @@ type ActivityItem = {
   label: string
 }
 
-function buildActivity(): ActivityItem[] {
+function buildActivity(incomeRecords: IncomeRecord[], expenses: Expense[]): ActivityItem[] {
   const items: ActivityItem[] = []
   for (const r of incomeRecords.slice(0, 4)) {
     items.push({
@@ -36,11 +38,19 @@ function buildActivity(): ActivityItem[] {
       label: e.description,
     })
   }
-  return items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+  return items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8)
 }
 
 export function RecentActivity() {
-  const activity = buildActivity()
+  const [activity, setActivity] = useState<ActivityItem[]>([])
+
+  useEffect(() => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses")]).then(async ([incRes, expRes]) => {
+      const incomes = await incRes.json()
+      const expenses = await expRes.json()
+      setActivity(buildActivity(incomes, expenses))
+    })
+  }, [])
 
   return (
     <Card>

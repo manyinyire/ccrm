@@ -1,0 +1,49 @@
+import { NextResponse } from "next/server"
+import { prisma } from "@/lib/prisma"
+
+export async function GET() {
+  const records = await prisma.expense.findMany({
+    include: {
+      assembly: { select: { name: true } },
+      owedPerson: { select: { id: true, name: true } },
+    },
+    orderBy: { date: "desc" },
+  })
+  const mapped = records.map((r) => ({
+    ...r,
+    assemblyName: r.assembly.name,
+    owedPersonName: r.owedPerson?.name || null,
+  }))
+  return NextResponse.json(mapped)
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json()
+    const record = await prisma.expense.create({
+      data: {
+        assemblyId: body.assemblyId,
+        date: new Date(body.date),
+        currency: body.currency,
+        event: body.event,
+        description: body.description,
+        amount: body.amount,
+        paidTo: body.paidTo,
+        paymentSource: body.paymentSource,
+        owedPersonId: body.owedPersonId || null,
+        status: body.paymentSource === "OWED_PERSON" ? "OWED" : (body.status || "PAID"),
+      },
+      include: {
+        assembly: { select: { name: true } },
+        owedPerson: { select: { id: true, name: true } },
+      },
+    })
+    return NextResponse.json(
+      { ...record, assemblyName: record.assembly.name, owedPersonName: record.owedPerson?.name || null },
+      { status: 201 }
+    )
+  } catch (error) {
+    console.error("Create expense error:", error)
+    return NextResponse.json({ error: "Failed to create expense" }, { status: 500 })
+  }
+}

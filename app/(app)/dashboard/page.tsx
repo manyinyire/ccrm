@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   DollarSign,
   Receipt,
@@ -26,45 +26,27 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import {
-  incomeRecords,
-  expenses,
-  assets,
-  getCashAtHand,
-  getOwedLedger,
-  formatCurrency,
-  convertToUSD,
-  assemblies,
-} from "@/lib/mock-data"
-import { useCurrency } from "@/lib/currency-context"
+import { formatCurrency } from "@/lib/mock-data"
+import type { Assembly } from "@/lib/mock-data"
 
 export default function DashboardPage() {
-  const { currency } = useCurrency()
   const [assemblyFilter, setAssemblyFilter] = useState("all")
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
+  const [stats, setStats] = useState({
+    totalIncome: 0, totalExpenses: 0, cashBalance: 0, cashUSD: 0,
+    owedBalance: 0, totalAttendance: 0, totalAssetValue: 0,
+  })
 
-  const filteredIncome = incomeRecords
-    .filter((r) => r.date.startsWith("2026-02"))
-    .filter((r) => assemblyFilter === "all" || r.assemblyId === assemblyFilter)
+  const fetchData = useCallback(async () => {
+    const [asmRes, dashRes] = await Promise.all([
+      fetch("/api/assemblies"),
+      fetch(`/api/dashboard?assemblyId=${assemblyFilter}`),
+    ])
+    setAssemblies(await asmRes.json())
+    setStats(await dashRes.json())
+  }, [assemblyFilter])
 
-  const filteredExpenses = expenses
-    .filter((e) => e.date.startsWith("2026-02"))
-    .filter((e) => assemblyFilter === "all" || e.assemblyId === assemblyFilter)
-
-  // Convert everything to USD for unified dashboard stats
-  const totalIncome = filteredIncome.reduce((sum, r) => sum + convertToUSD(r.totalAmount, r.currency), 0)
-  const totalExpenses = filteredExpenses.reduce((sum, e) => sum + convertToUSD(e.amount, e.currency), 0)
-
-  const cash = getCashAtHand()
-  const cashBalance = cash.usd.balance + convertToUSD(cash.zwl.balance, "ZWL")
-
-  const owed = getOwedLedger()
-  const owedBalance = owed.usd.balance + convertToUSD(owed.zwl.balance, "ZWL")
-
-  const totalAttendance = filteredIncome.reduce((sum, r) => sum + r.adults + r.children, 0)
-
-  const totalAssetValue = assets
-    .filter((a) => assemblyFilter === "all" || a.assemblyId === assemblyFilter)
-    .reduce((s, a) => s + convertToUSD(a.currentValue, a.currency), 0)
+  useEffect(() => { fetchData() }, [fetchData])
 
   return (
     <>
@@ -83,7 +65,7 @@ export default function DashboardPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Assemblies</SelectItem>
-              {assemblies.filter((a) => a.status === "active").map((a) => (
+              {assemblies.filter((a) => a.status === "ACTIVE").map((a) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
             </SelectContent>
@@ -95,43 +77,43 @@ export default function DashboardPage() {
         {/* Stat Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <StatCard
-            title="Monthly Income"
-            value={formatCurrency(totalIncome, "USD")}
+            title="Total Income"
+            value={formatCurrency(stats.totalIncome, "USD")}
             icon={DollarSign}
-            trend={{ value: "12%", positive: true }}
+            description="USD equivalent"
             iconClassName="bg-primary/10 text-primary"
           />
           <StatCard
-            title="Monthly Expenses"
-            value={formatCurrency(totalExpenses, "USD")}
+            title="Total Expenses"
+            value={formatCurrency(stats.totalExpenses, "USD")}
             icon={Receipt}
-            trend={{ value: "5%", positive: false }}
+            description="USD equivalent"
             iconClassName="bg-destructive/10 text-destructive"
           />
           <StatCard
             title="Cash At Hand"
-            value={formatCurrency(cashBalance, "USD")}
+            value={formatCurrency(stats.cashBalance, "USD")}
             icon={Wallet}
-            description={`USD: ${formatCurrency(cash.usd.balance, "USD")}`}
+            description={`USD: ${formatCurrency(stats.cashUSD, "USD")}`}
             iconClassName="bg-success/10 text-success"
           />
           <StatCard
             title="Total Owed"
-            value={formatCurrency(owedBalance, "USD")}
+            value={formatCurrency(stats.owedBalance, "USD")}
             icon={BookOpen}
             description="To owed persons"
             iconClassName="bg-warning/10 text-warning"
           />
           <StatCard
             title="Attendance"
-            value={totalAttendance.toLocaleString()}
+            value={stats.totalAttendance.toLocaleString()}
             icon={Users}
-            trend={{ value: "8%", positive: true }}
+            description="Total headcount"
             iconClassName="bg-primary/10 text-primary"
           />
           <StatCard
             title="Asset Value"
-            value={formatCurrency(totalAssetValue, "USD")}
+            value={formatCurrency(stats.totalAssetValue, "USD")}
             icon={Package}
             description="Current valuation"
             iconClassName="bg-success/10 text-success"

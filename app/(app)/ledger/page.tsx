@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Plus,
   AlertTriangle,
@@ -37,13 +37,8 @@ import {
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
-import {
-  expenses,
-  refunds,
-  owedPersons,
-  getOwedLedger,
-  formatCurrency,
-} from "@/lib/mock-data"
+import { formatCurrency } from "@/lib/mock-data"
+import type { Expense, Refund, OwedPerson } from "@/lib/mock-data"
 import { BookOpen, DollarSign, TrendingDown } from "lucide-react"
 import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
@@ -53,12 +48,41 @@ export default function LedgerPage() {
   const [selectedPerson, setSelectedPerson] = useState<string>("all")
   const [refundDialogOpen, setRefundDialogOpen] = useState(false)
   const [personDialogOpen, setPersonDialogOpen] = useState(false)
+  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [refunds, setRefunds] = useState<Refund[]>([])
+  const [owedPersons, setOwedPersons] = useState<OwedPerson[]>([])
+
+  const fetchData = useCallback(async () => {
+    const [expRes, refRes, opRes] = await Promise.all([
+      fetch("/api/expenses"),
+      fetch("/api/refunds"),
+      fetch("/api/owed-persons"),
+    ])
+    setExpenses(await expRes.json())
+    setRefunds(await refRes.json())
+    setOwedPersons(await opRes.json())
+  }, [])
+
+  useEffect(() => { fetchData() }, [fetchData])
 
   const personId = selectedPerson === "all" ? undefined : selectedPerson
-  const ledger = getOwedLedger(personId)
-  const activeLedger = currency === "USD" ? ledger.usd : ledger.zwl
 
-  const filteredExpenses = ledger.expenses.filter((e) => e.currency === currency)
+  // Compute owed ledger from real data
+  const owedExpenses = expenses.filter(
+    (e) => e.paymentSource === "OWED_PERSON" && (!personId || e.owedPersonId === personId)
+  )
+  const personRefunds = refunds.filter((r) => !personId || r.owedPersonId === personId)
+
+  const usdDebt = owedExpenses.filter((e) => e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
+  const zwlDebt = owedExpenses.filter((e) => e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
+  const usdRefund = personRefunds.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
+  const zwlRefund = personRefunds.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
+
+  const activeLedger = currency === "USD"
+    ? { totalDebt: usdDebt, totalRefund: usdRefund, balance: usdDebt - usdRefund }
+    : { totalDebt: zwlDebt, totalRefund: zwlRefund, balance: zwlDebt - zwlRefund }
+
+  const filteredExpenses = owedExpenses.filter((e) => e.currency === currency)
 
   function handleExportCSV() {
     const rows = filteredExpenses.map((e) => {
@@ -109,7 +133,7 @@ export default function LedgerPage() {
                 Register a new person who may be owed money by the church.
               </DialogDescription>
             </DialogHeader>
-            <PersonForm onClose={() => setPersonDialogOpen(false)} />
+            <PersonForm onClose={() => { setPersonDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
         <Dialog open={refundDialogOpen} onOpenChange={setRefundDialogOpen}>
@@ -126,7 +150,7 @@ export default function LedgerPage() {
                 Record a payment back to the owed person.
               </DialogDescription>
             </DialogHeader>
-            <RefundForm onClose={() => setRefundDialogOpen(false)} currency={currency} />
+            <RefundForm expenses={expenses} owedPersons={owedPersons} onClose={() => { setRefundDialogOpen(false); fetchData() }} currency={currency} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -341,41 +365,75 @@ export default function LedgerPage() {
 }
 
 function PersonForm({ onClose }: { onClose: () => void }) {
+  const [loading, setLoading] = useState(false)
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [role, setRole] = useState("")
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    await fetch("/api/owed-persons", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, phone, role }),
+    })
+    setLoading(false)
+    onClose()
+  }
+
   return (
     <div className="grid gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="personName">Full Name</Label>
-        <Input id="personName" placeholder="e.g. John Moyo" />
+        <Input id="personName" placeholder="e.g. John Moyo" value={name} onChange={(e) => setName(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="personPhone">Phone Number</Label>
-        <Input id="personPhone" placeholder="+263 7X XXX XXXX" />
+        <Input id="personPhone" placeholder="+263 7X XXX XXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="personRole">Role</Label>
-        <Input id="personRole" placeholder="e.g. Finance Officer, Deacon, Elder" />
+        <Input id="personRole" placeholder="e.g. Finance Officer, Deacon, Elder" value={role} onChange={(e) => setRole(e.target.value)} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Add Person</Button>
+        <Button onClick={handleSubmit} disabled={loading || !name}>{loading ? "Saving..." : "Add Person"}</Button>
       </DialogFooter>
     </div>
   )
 }
 
-function RefundForm({ onClose, currency }: { onClose: () => void; currency: string }) {
-  const owedExpenses = expenses.filter((e) => e.paymentSource === "OWED_PERSON" && e.currency === currency)
+function RefundForm({ expenses, owedPersons, onClose, currency }: { expenses: Expense[]; owedPersons: OwedPerson[]; onClose: () => void; currency: string }) {
+  const [loading, setLoading] = useState(false)
+  const [owedPersonId, setOwedPersonId] = useState("")
+  const [expenseId, setExpenseId] = useState("")
+  const [amount, setAmount] = useState(0)
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0])
+  const [note, setNote] = useState("")
+
+  const owedExpenses = expenses.filter((e: Expense) => e.paymentSource === "OWED_PERSON" && e.currency === currency)
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    await fetch("/api/refunds", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expenseId, owedPersonId, amount, currency, date, note }),
+    })
+    setLoading(false)
+    onClose()
+  }
 
   return (
     <div className="grid gap-4">
       <div className="flex flex-col gap-2">
         <Label>Owed Person</Label>
-        <Select>
+        <Select value={owedPersonId} onValueChange={setOwedPersonId}>
           <SelectTrigger>
             <SelectValue placeholder="Select person" />
           </SelectTrigger>
           <SelectContent>
-            {owedPersons.map((p) => (
+            {owedPersons.map((p: OwedPerson) => (
               <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
             ))}
           </SelectContent>
@@ -383,14 +441,14 @@ function RefundForm({ onClose, currency }: { onClose: () => void; currency: stri
       </div>
       <div className="flex flex-col gap-2">
         <Label>Expense</Label>
-        <Select>
+        <Select value={expenseId} onValueChange={setExpenseId}>
           <SelectTrigger>
             <SelectValue placeholder="Select expense to refund" />
           </SelectTrigger>
           <SelectContent>
             {owedExpenses
-              .filter((e) => e.status !== "PAID")
-              .map((e) => (
+              .filter((e: Expense) => e.status !== "PAID")
+              .map((e: Expense) => (
                 <SelectItem key={e.id} value={e.id}>
                   {e.description} - {formatCurrency(e.amount, e.currency)}
                 </SelectItem>
@@ -400,19 +458,19 @@ function RefundForm({ onClose, currency }: { onClose: () => void; currency: stri
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="refundAmount">Amount ({currency})</Label>
-        <Input id="refundAmount" type="number" placeholder="0" />
+        <Input id="refundAmount" type="number" placeholder="0" onChange={(e) => setAmount(parseFloat(e.target.value) || 0)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="refundDate">Date</Label>
-        <Input id="refundDate" type="date" defaultValue="2026-02-11" />
+        <Input id="refundDate" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="refundNote">Note</Label>
-        <Textarea id="refundNote" placeholder="Refund note..." rows={2} />
+        <Textarea id="refundNote" placeholder="Refund note..." rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={onClose}>Record Refund</Button>
+        <Button onClick={handleSubmit} disabled={loading || !expenseId || !owedPersonId}>{loading ? "Saving..." : "Record Refund"}</Button>
       </DialogFooter>
     </div>
   )

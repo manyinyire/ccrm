@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect, useCallback } from "react"
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -22,13 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  incomeRecords,
-  expenses,
-  getCashAtHand,
-  cashFlowTrends,
-  formatCurrency,
-} from "@/lib/mock-data"
+import { formatCurrency } from "@/lib/mock-data"
+import type { IncomeRecord, Expense } from "@/lib/mock-data"
 import { useCurrency } from "@/lib/currency-context"
 import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 import {
@@ -48,8 +44,25 @@ import {
 
 export default function CashPage() {
   const { currency } = useCurrency()
-  const cash = getCashAtHand()
-  const activeCash = currency === "USD" ? cash.usd : cash.zwl
+  const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
+  const [expenses, setExpenses] = useState<Expense[]>([])
+
+  useEffect(() => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses")]).then(async ([incRes, expRes]) => {
+      setIncomeRecords(await incRes.json())
+      setExpenses(await expRes.json())
+    })
+  }, [])
+
+  // Cash at hand calculations
+  const cashInUSD = incomeRecords.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.received, 0)
+  const cashInZWL = incomeRecords.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.received, 0)
+  const cashOutUSD = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
+  const cashOutZWL = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
+
+  const activeCash = currency === "USD"
+    ? { cashIn: cashInUSD, cashOut: cashOutUSD, balance: cashInUSD - cashOutUSD }
+    : { cashIn: cashInZWL, cashOut: cashOutZWL, balance: cashInZWL - cashOutZWL }
 
   // Build a ledger of cash-in and cash-out transactions
   const cashInRecords = incomeRecords
@@ -105,8 +118,21 @@ export default function CashPage() {
     exportToCSV(rows, `cash-at-hand-${currency.toLowerCase()}`)
   }
 
+  // Build monthly chart data from transactions
+  const monthlyMap: Record<string, { inflow: number; outflow: number }> = {}
+  for (const t of allTransactions) {
+    const m = new Date(t.date).toLocaleString("en-US", { month: "short" })
+    if (!monthlyMap[m]) monthlyMap[m] = { inflow: 0, outflow: 0 }
+    if (t.type === "in") monthlyMap[m].inflow += t.amount
+    else monthlyMap[m].outflow += t.amount
+  }
+  let bal = 0
+  const cashFlowTrends = Object.entries(monthlyMap).map(([month, d]) => {
+    bal += d.inflow - d.outflow
+    return { month, inflow: d.inflow, outflow: d.outflow, balance: bal }
+  })
+
   const fmt = (v: number) => formatCurrency(v, currency)
-  const chartFmt = (v: number) => currency === "ZWL" ? `${(v / 1000000).toFixed(1)}M` : `$${v}`
 
   return (
     <>

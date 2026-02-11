@@ -11,7 +11,9 @@ import {
   MoreHorizontal,
   Pencil,
   Trash2,
+  Eye,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -54,6 +56,7 @@ import { formatCurrency, convertToUSD } from "@/lib/mock-data"
 import type { Assembly, IncomeRecord, Expense } from "@/lib/mock-data"
 
 export default function AssembliesPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingAssembly, setEditingAssembly] = useState<Assembly | null>(null)
@@ -145,7 +148,7 @@ export default function AssembliesPage() {
             )
 
             return (
-              <Card key={assembly.id} className="overflow-hidden">
+              <Card key={assembly.id} className="overflow-hidden cursor-pointer hover:border-primary/50 transition-colors" onClick={() => router.push(`/assemblies/${assembly.id}`)}>
                 <CardHeader className="flex flex-row items-start justify-between pb-3">
                   <div className="flex flex-col gap-1">
                     <CardTitle className="text-lg">{assembly.name}</CardTitle>
@@ -172,11 +175,15 @@ export default function AssembliesPage() {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => { setEditingAssembly(assembly); setDialogOpen(true) }}>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); router.push(`/assemblies/${assembly.id}`) }}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          View 360°
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); setEditingAssembly(assembly); setDialogOpen(true) }}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive" onClick={() => setDeleteId(assembly.id)}>
+                        <DropdownMenuItem className="text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteId(assembly.id) }}>
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete
                         </DropdownMenuItem>

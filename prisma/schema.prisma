@@ -14,7 +14,26 @@ enum Role {
   SUPER_ADMIN
   ADMIN
   TREASURER
+  ASSEMBLY_LEADER
   VIEWER
+}
+
+model RolePermission {
+  id         String   @id @default(cuid())
+  role       Role     @unique
+  canViewAll Boolean  @default(false)
+  canManageIncome Boolean @default(false)
+  canManageExpenses Boolean @default(false)
+  canManageReceivables Boolean @default(false)
+  canManageVentures Boolean @default(false)
+  canManageProjects Boolean @default(false)
+  canManageAssets Boolean @default(false)
+  canManageUsers Boolean @default(false)
+  canManageAssemblies Boolean @default(false)
+  canViewReports Boolean @default(false)
+  canExport Boolean @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 enum Currency {

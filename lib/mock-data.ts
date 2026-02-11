@@ -120,6 +120,7 @@ export const roleLabels: Record<string, string> = {
   SUPER_ADMIN: "Super Admin",
   ADMIN: "Admin",
   TREASURER: "Treasurer",
+  ASSEMBLY_LEADER: "Assembly Leader",
   VIEWER: "Viewer",
 }
 

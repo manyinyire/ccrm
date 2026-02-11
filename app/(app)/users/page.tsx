@@ -12,7 +12,9 @@ import {
   Shield,
   Mail,
   Calendar,
+  Settings,
 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -74,12 +76,15 @@ const roleStyles: Record<string, string> = {
   SUPER_ADMIN: "bg-primary/10 text-primary border-primary/20",
   ADMIN: "bg-[hsl(213,94%,40%)]/10 text-[hsl(213,94%,40%)] border-[hsl(213,94%,40%)]/20",
   TREASURER: "bg-success/10 text-success border-success/20",
+  ASSEMBLY_LEADER: "bg-orange-500/10 text-orange-600 border-orange-500/20",
   VIEWER: "bg-muted text-muted-foreground",
 }
 
 export default function UsersPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [roleFilter, setRoleFilter] = useState("all")
+  const [editingUser, setEditingUser] = useState<AppUser | null>(null)
   const [statusFilter, setStatusFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -135,7 +140,11 @@ export default function UsersPage() {
         description="Manage system users, roles, and access permissions"
         breadcrumb="Users"
       >
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Button variant="outline" onClick={() => router.push("/users/permissions")}>
+          <Settings className="mr-2 h-4 w-4" />
+          Role Permissions
+        </Button>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingUser(null) }}>
           <DialogTrigger asChild>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
@@ -144,12 +153,12 @@ export default function UsersPage() {
           </DialogTrigger>
           <DialogContent className="max-w-lg">
             <DialogHeader>
-              <DialogTitle>Add New User</DialogTitle>
+              <DialogTitle>{editingUser ? "Edit User" : "Add New User"}</DialogTitle>
               <DialogDescription>
-                Create a new user account for the Church CRM system.
+                {editingUser ? "Update user details, role, and assembly assignment." : "Create a new user account for the Church CRM system."}
               </DialogDescription>
             </DialogHeader>
-            <UserForm assemblies={assemblies} onClose={() => { setDialogOpen(false); fetchData() }} />
+            <UserForm user={editingUser} assemblies={assemblies} onClose={() => { setDialogOpen(false); setEditingUser(null); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -298,7 +307,7 @@ export default function UsersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { setEditingUser(user); setDialogOpen(true) }}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit User
                           </DropdownMenuItem>
@@ -359,28 +368,43 @@ export default function UsersPage() {
   )
 }
 
-function UserForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: () => void }) {
+function UserForm({ user, assemblies, onClose }: { user: AppUser | null; assemblies: Assembly[]; onClose: () => void }) {
+  const isEdit = !!user
   const [loading, setLoading] = useState(false)
   const [form, setForm] = useState({
-    name: "",
-    email: "",
+    name: user?.name || "",
+    email: user?.email || "",
     password: "",
-    role: "VIEWER",
-    assemblyId: "",
+    role: user?.role || "VIEWER",
+    assemblyId: user?.assemblyId || "",
   })
 
   const set = (key: string, value: string) => setForm((f) => ({ ...f, [key]: value }))
 
   const handleSubmit = async () => {
     setLoading(true)
-    await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
+    if (isEdit) {
+      const body: Record<string, unknown> = {
+        name: form.name,
+        role: form.role,
         assemblyId: form.assemblyId || null,
-      }),
-    })
+      }
+      if (form.password) body.password = form.password
+      await fetch(`/api/users/${user!.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    } else {
+      await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          assemblyId: form.assemblyId || null,
+        }),
+      })
+    }
     setLoading(false)
     onClose()
   }
@@ -394,7 +418,7 @@ function UserForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: ()
         </div>
         <div className="flex flex-col gap-2">
           <Label htmlFor="userEmail">Email</Label>
-          <Input id="userEmail" type="email" placeholder="john@church.org" value={form.email} onChange={(e) => set("email", e.target.value)} />
+          <Input id="userEmail" type="email" placeholder="john@church.org" value={form.email} onChange={(e) => set("email", e.target.value)} disabled={isEdit} />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
@@ -408,18 +432,19 @@ function UserForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: ()
               <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
               <SelectItem value="ADMIN">Admin</SelectItem>
               <SelectItem value="TREASURER">Treasurer</SelectItem>
+              <SelectItem value="ASSEMBLY_LEADER">Assembly Leader</SelectItem>
               <SelectItem value="VIEWER">Viewer</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="flex flex-col gap-2">
-          <Label>Assembly</Label>
+          <Label>Assembly {form.role === "ASSEMBLY_LEADER" && <span className="text-destructive">*</span>}</Label>
           <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
             <SelectTrigger>
               <SelectValue placeholder="Select assembly" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Assemblies</SelectItem>
+              {form.role !== "ASSEMBLY_LEADER" && <SelectItem value="">All Assemblies</SelectItem>}
               {assemblies.filter((a: Assembly) => a.status === "ACTIVE").map((a: Assembly) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
@@ -428,12 +453,14 @@ function UserForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: ()
         </div>
       </div>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="userPassword">Temporary Password</Label>
-        <Input id="userPassword" type="password" placeholder="Set initial password" value={form.password} onChange={(e) => set("password", e.target.value)} />
+        <Label htmlFor="userPassword">{isEdit ? "New Password (leave blank to keep current)" : "Temporary Password"}</Label>
+        <Input id="userPassword" type="password" placeholder={isEdit ? "Leave blank to keep current" : "Set initial password"} value={form.password} onChange={(e) => set("password", e.target.value)} />
       </div>
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={loading || !form.name || !form.email || !form.password}>{loading ? "Creating..." : "Create User"}</Button>
+        <Button onClick={handleSubmit} disabled={loading || !form.name || !form.email || (!isEdit && !form.password) || (form.role === "ASSEMBLY_LEADER" && !form.assemblyId)}>
+          {loading ? "Saving..." : isEdit ? "Update User" : "Create User"}
+        </Button>
       </DialogFooter>
     </div>
   )

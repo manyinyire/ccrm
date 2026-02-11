@@ -40,24 +40,26 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useCurrency } from "@/lib/currency-context"
+import { usePermissions } from "@/lib/use-permissions"
+import { roleLabels } from "@/lib/mock-data"
 import type { Currency } from "@/lib/mock-data"
 
 const mainNav = [
-  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { title: "Income", href: "/income", icon: DollarSign },
-  { title: "Receivables", href: "/receivables", icon: HandCoins },
-  { title: "Expenses", href: "/expenses", icon: Receipt },
-  { title: "Ventures", href: "/ventures", icon: Store },
-  { title: "Projects", href: "/projects", icon: FolderKanban },
-  { title: "Owed Ledger", href: "/ledger", icon: BookOpen },
-  { title: "Cash At Hand", href: "/cash", icon: Wallet },
-  { title: "Assets", href: "/assets", icon: Package },
+  { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard, perm: null },
+  { title: "Income", href: "/income", icon: DollarSign, perm: "canManageIncome" },
+  { title: "Receivables", href: "/receivables", icon: HandCoins, perm: "canManageReceivables" },
+  { title: "Expenses", href: "/expenses", icon: Receipt, perm: "canManageExpenses" },
+  { title: "Ventures", href: "/ventures", icon: Store, perm: "canManageVentures" },
+  { title: "Projects", href: "/projects", icon: FolderKanban, perm: "canManageProjects" },
+  { title: "Owed Ledger", href: "/ledger", icon: BookOpen, perm: "canManageExpenses" },
+  { title: "Cash At Hand", href: "/cash", icon: Wallet, perm: "canManageIncome" },
+  { title: "Assets", href: "/assets", icon: Package, perm: "canManageAssets" },
 ]
 
 const adminNav = [
-  { title: "Assemblies", href: "/assemblies", icon: Church },
-  { title: "Users", href: "/users", icon: Users },
-  { title: "Reports", href: "/reports", icon: TrendingUp },
+  { title: "Assemblies", href: "/assemblies", icon: Church, perm: "canManageAssemblies" },
+  { title: "Users", href: "/users", icon: Users, perm: "canManageUsers" },
+  { title: "Reports", href: "/reports", icon: TrendingUp, perm: "canViewReports" },
 ]
 
 export function AppSidebar() {
@@ -65,15 +67,19 @@ export function AppSidebar() {
   const { data: session } = useSession()
   const { currency, setCurrency } = useCurrency()
 
+  const { permissions, isSuperAdmin } = usePermissions()
   const userName = session?.user?.name || "User"
-  const userRole = (session?.user as any)?.role || "USER"
+  const userRole = (session?.user as any)?.role || "VIEWER"
   const initials = userName
     .split(" ")
     .map((n: string) => n[0])
     .join("")
     .toUpperCase()
     .slice(0, 2)
-  const roleLabel = userRole === "SUPER_ADMIN" ? "Super Admin" : userRole === "ADMIN" ? "Admin" : "User"
+  const roleLabel = roleLabels[userRole] || "User"
+
+  const visibleMain = mainNav.filter((item) => !item.perm || isSuperAdmin || (permissions as any)[item.perm])
+  const visibleAdmin = adminNav.filter((item) => !item.perm || isSuperAdmin || (permissions as any)[item.perm])
 
   return (
     <Sidebar collapsible="icon">
@@ -116,7 +122,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Main Menu</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {mainNav.map((item) => (
+              {visibleMain.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     asChild
@@ -140,7 +146,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Administration</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {adminNav.map((item) => (
+              {visibleAdmin.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     asChild

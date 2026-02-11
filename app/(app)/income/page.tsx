@@ -334,7 +334,6 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
     date: new Date().toISOString().split("T")[0],
     assemblyId: assemblies.find(a => a.status === "ACTIVE")?.id || "",
     currency: "USD",
-    projectId: "",
     adults: 0, children: 0, newSouls: 0,
     sentToPastor: 0, received: 0,
   })
@@ -360,7 +359,7 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
     await fetch("/api/income", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form, projectId: form.projectId === "none" ? null : form.projectId || null, customItems: customAmounts }),
+      body: JSON.stringify({ ...form, customItems: customAmounts }),
     })
     setLoading(false)
     onClose()
@@ -400,23 +399,6 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
         </div>
       </div>
 
-      {projects.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <Label>Project (optional)</Label>
-          <Select value={form.projectId as string} onValueChange={(v) => set("projectId", v)}>
-            <SelectTrigger>
-              <SelectValue placeholder="No project" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No project</SelectItem>
-              {projects.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-
       <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="adults">Adults</Label>
@@ -432,7 +414,7 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
         </div>
       </div>
 
-      {/* Dynamic income items */}
+      {/* Dynamic income items + active projects */}
       <div className="grid grid-cols-3 gap-4">
         {incomeItems.map((item) => {
           const fieldKey = ITEM_FIELD_MAP[item.name]
@@ -455,6 +437,19 @@ function IncomeForm({ assemblies, incomeItems, projects, onClose }: { assemblies
             </div>
           )
         })}
+        {projects.map((p) => (
+          <div key={p.id} className="flex flex-col gap-2">
+            <Label>{p.name}</Label>
+            <Input
+              type="number"
+              placeholder="0"
+              onChange={(e) => {
+                const val = parseFloat(e.target.value) || 0
+                setCustomAmounts((prev) => ({ ...prev, [`project:${p.id}`]: val }))
+              }}
+            />
+          </div>
+        ))}
       </div>
 
       <div className="grid grid-cols-2 gap-4">

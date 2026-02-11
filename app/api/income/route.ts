@@ -17,7 +17,21 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     const customItems = body.customItems || {}
-    const customTotal = Object.values(customItems).reduce((s: number, v: any) => s + (parseFloat(v) || 0), 0)
+
+    // Separate project amounts from regular custom items
+    const projectAmounts: Record<string, number> = {}
+    const regularCustomItems: Record<string, number> = {}
+    for (const [key, val] of Object.entries(customItems)) {
+      const amount = parseFloat(String(val)) || 0
+      if (amount === 0) continue
+      if (key.startsWith("project:")) {
+        projectAmounts[key.replace("project:", "")] = amount
+      } else {
+        regularCustomItems[key] = amount
+      }
+    }
+
+    const regularCustomTotal = Object.values(regularCustomItems).reduce((s, v) => s + v, 0)
     const totalAmount =
       (body.offering || 0) +
       (body.tithe || 0) +
@@ -25,13 +39,13 @@ export async function POST(req: Request) {
       (body.firewood || 0) +
       (body.instruments || 0) +
       (body.pastorsWelfare || 0) +
-      customTotal
+      regularCustomTotal
     const balance = totalAmount - (body.sentToPastor || 0)
 
+    // Create the main income record (non-project items)
     const record = await prisma.income.create({
       data: {
         assemblyId: body.assemblyId,
-        projectId: body.projectId || null,
         date: new Date(body.date),
         currency: body.currency,
         adults: body.adults || 0,
@@ -43,7 +57,7 @@ export async function POST(req: Request) {
         firewood: body.firewood || 0,
         instruments: body.instruments || 0,
         pastorsWelfare: body.pastorsWelfare || 0,
-        customItems: customItems,
+        customItems: regularCustomItems,
         totalAmount,
         sentToPastor: body.sentToPastor || 0,
         received: body.received || 0,
@@ -51,6 +65,33 @@ export async function POST(req: Request) {
       },
       include: { assembly: { select: { name: true } } },
     })
+
+    // Create separate income records for each project amount, linked via projectId
+    for (const [projectId, amount] of Object.entries(projectAmounts)) {
+      await prisma.income.create({
+        data: {
+          assemblyId: body.assemblyId,
+          projectId,
+          date: new Date(body.date),
+          currency: body.currency,
+          adults: 0,
+          children: 0,
+          newSouls: 0,
+          offering: 0,
+          tithe: 0,
+          feastBadges: 0,
+          firewood: 0,
+          instruments: 0,
+          pastorsWelfare: 0,
+          customItems: {},
+          totalAmount: amount,
+          sentToPastor: 0,
+          received: 0,
+          balance: amount,
+        },
+      })
+    }
+
     return NextResponse.json({ ...record, assemblyName: record.assembly.name }, { status: 201 })
   } catch (error) {
     console.error("Create income error:", error)

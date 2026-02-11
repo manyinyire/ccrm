@@ -42,37 +42,46 @@ import {
   Legend,
 } from "recharts"
 
+type Receivable = { id: string; assemblyName: string; date: string; currency: string; amount: number; paymentMethod: string; description: string }
+
 export default function CashPage() {
   const { currency } = useCurrency()
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
+  const [receivables, setReceivables] = useState<Receivable[]>([])
 
   useEffect(() => {
-    Promise.all([fetch("/api/income"), fetch("/api/expenses")]).then(async ([incRes, expRes]) => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/receivables")]).then(async ([incRes, expRes, recRes]) => {
       setIncomeRecords(await incRes.json())
       setExpenses(await expRes.json())
+      setReceivables(await recRes.json())
     })
   }, [])
 
-  // Cash at hand calculations
-  const cashInUSD = incomeRecords.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.received, 0)
-  const cashInZWL = incomeRecords.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.received, 0)
+  // Cash at hand calculations — now based on receivables
+  const cashInUSD = receivables.filter((r) => r.currency === "USD" && r.paymentMethod === "CASH").reduce((sum, r) => sum + r.amount, 0)
+  const cashInZWL = receivables.filter((r) => r.currency === "ZWL" && r.paymentMethod === "CASH").reduce((sum, r) => sum + r.amount, 0)
+  const ecocashInUSD = receivables.filter((r) => r.currency === "USD" && r.paymentMethod === "ECOCASH").reduce((sum, r) => sum + r.amount, 0)
+  const ecocashInZWL = receivables.filter((r) => r.currency === "ZWL" && r.paymentMethod === "ECOCASH").reduce((sum, r) => sum + r.amount, 0)
   const cashOutUSD = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
   const cashOutZWL = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
 
+  const totalInUSD = cashInUSD + ecocashInUSD
+  const totalInZWL = cashInZWL + ecocashInZWL
+
   const activeCash = currency === "USD"
-    ? { cashIn: cashInUSD, cashOut: cashOutUSD, balance: cashInUSD - cashOutUSD }
-    : { cashIn: cashInZWL, cashOut: cashOutZWL, balance: cashInZWL - cashOutZWL }
+    ? { cashIn: totalInUSD, cashOut: cashOutUSD, balance: totalInUSD - cashOutUSD }
+    : { cashIn: totalInZWL, cashOut: cashOutZWL, balance: totalInZWL - cashOutZWL }
 
   // Build a ledger of cash-in and cash-out transactions
-  const cashInRecords = incomeRecords
+  const cashInRecords = receivables
     .filter((r) => r.currency === currency)
     .map((r) => ({
       id: r.id,
       date: r.date,
       type: "in" as const,
-      description: `Received from ${r.assemblyName}`,
-      amount: r.received,
+      description: `${r.paymentMethod === "ECOCASH" ? "EcoCash" : "Cash"} from ${r.assemblyName}${r.description ? ` — ${r.description}` : ""}`,
+      amount: r.amount,
       assembly: r.assemblyName,
     }))
 

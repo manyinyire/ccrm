@@ -1,12 +1,12 @@
 "use client"
 
 import { useState } from "react"
-import { Plus, Search, Filter, Download } from "lucide-react"
+import { Plus, Search, Filter, Download, FileText } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -32,10 +32,12 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { incomeRecords, assemblies, formatCurrency } from "@/lib/mock-data"
-import type { IncomeRecord } from "@/lib/mock-data"
+import { incomeRecords, assemblies, formatCurrency, convertToUSD } from "@/lib/mock-data"
+import { useCurrency } from "@/lib/currency-context"
+import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 
 export default function IncomePage() {
+  const { currency } = useCurrency()
   const [search, setSearch] = useState("")
   const [assemblyFilter, setAssemblyFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -48,9 +50,27 @@ export default function IncomePage() {
     return matchesSearch && matchesAssembly
   })
 
-  const totalIncome = filtered.reduce((sum, r) => sum + r.totalAmount, 0)
+  const totalIncome = filtered.reduce((sum, r) => sum + convertToUSD(r.totalAmount, r.currency), 0)
   const totalAttendance = filtered.reduce((sum, r) => sum + r.adults + r.children, 0)
   const totalNewSouls = filtered.reduce((sum, r) => sum + r.newSouls, 0)
+
+  function handleExportCSV() {
+    const rows = filtered.map((r) => ({
+      Date: r.date,
+      Assembly: r.assemblyName,
+      Currency: r.currency,
+      Adults: r.adults,
+      Children: r.children,
+      "New Souls": r.newSouls,
+      Offering: r.offering,
+      Tithe: r.tithe,
+      Total: r.totalAmount,
+      "Sent to Pastor": r.sentToPastor,
+      Received: r.received,
+      Balance: r.balance,
+    }))
+    exportToCSV(rows, "income-records")
+  }
 
   return (
     <>
@@ -59,6 +79,14 @@ export default function IncomePage() {
         description="Track and manage weekly income from all assemblies"
         breadcrumb="Income"
       >
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          <Download className="mr-2 h-4 w-4" />
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => exportToPDF("Income Report", "income-content")}>
+          <FileText className="mr-2 h-4 w-4" />
+          PDF
+        </Button>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button>
@@ -78,14 +106,14 @@ export default function IncomePage() {
         </Dialog>
       </PageHeader>
 
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-6 p-6" id="income-content">
         {/* Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <Card>
             <CardContent className="p-4">
               <div className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Income</span>
-                <span className="text-2xl font-bold text-primary">{formatCurrency(totalIncome)}</span>
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Total Income (USD equiv.)</span>
+                <span className="text-2xl font-bold text-primary">{formatCurrency(totalIncome, "USD")}</span>
               </div>
             </CardContent>
           </Card>
@@ -130,9 +158,6 @@ export default function IncomePage() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
         </div>
 
         {/* Table */}
@@ -143,13 +168,14 @@ export default function IncomePage() {
                 <TableRow className="bg-muted/50">
                   <TableHead>Date</TableHead>
                   <TableHead>Assembly</TableHead>
+                  <TableHead>Cur.</TableHead>
                   <TableHead className="text-right">Adults</TableHead>
                   <TableHead className="text-right">Children</TableHead>
                   <TableHead className="text-right">New Souls</TableHead>
                   <TableHead className="text-right">Offering</TableHead>
                   <TableHead className="text-right">Tithe</TableHead>
                   <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Sent to Pastor</TableHead>
+                  <TableHead className="text-right">Sent</TableHead>
                   <TableHead className="text-right">Received</TableHead>
                   <TableHead className="text-right">Balance</TableHead>
                 </TableRow>
@@ -169,6 +195,9 @@ export default function IncomePage() {
                         {record.assemblyName}
                       </Badge>
                     </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="text-[10px]">{record.currency}</Badge>
+                    </TableCell>
                     <TableCell className="text-right tabular-nums">{record.adults}</TableCell>
                     <TableCell className="text-right tabular-nums">{record.children}</TableCell>
                     <TableCell className="text-right">
@@ -178,14 +207,14 @@ export default function IncomePage() {
                         <span className="text-muted-foreground">0</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(record.offering)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(record.tithe)}</TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(record.totalAmount)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(record.sentToPastor)}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatCurrency(record.received)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(record.offering, record.currency)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(record.tithe, record.currency)}</TableCell>
+                    <TableCell className="text-right tabular-nums font-semibold">{formatCurrency(record.totalAmount, record.currency)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(record.sentToPastor, record.currency)}</TableCell>
+                    <TableCell className="text-right tabular-nums">{formatCurrency(record.received, record.currency)}</TableCell>
                     <TableCell className="text-right tabular-nums">
                       <span className={record.balance > 0 ? "text-warning font-medium" : "text-success font-medium"}>
-                        {formatCurrency(record.balance)}
+                        {formatCurrency(record.balance, record.currency)}
                       </span>
                     </TableCell>
                   </TableRow>
@@ -202,7 +231,7 @@ export default function IncomePage() {
 function IncomeForm({ onClose }: { onClose: () => void }) {
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <div className="flex flex-col gap-2">
           <Label htmlFor="date">Date</Label>
           <Input id="date" type="date" defaultValue="2026-02-11" />
@@ -217,6 +246,18 @@ function IncomeForm({ onClose }: { onClose: () => void }) {
               {assemblies.filter(a => a.status === "active").map((a) => (
                 <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Currency</Label>
+          <Select defaultValue="USD">
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="USD">USD</SelectItem>
+              <SelectItem value="ZWL">ZWL</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -273,7 +314,7 @@ function IncomeForm({ onClose }: { onClose: () => void }) {
           <Input id="sentToPastor" type="number" placeholder="0" />
         </div>
         <div className="flex flex-col gap-2">
-          <Label htmlFor="received">Received (Cash to Freddy)</Label>
+          <Label htmlFor="received">Received (Cash)</Label>
           <Input id="received" type="number" placeholder="0" />
         </div>
       </div>

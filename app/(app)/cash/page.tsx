@@ -6,11 +6,14 @@ import {
   Wallet,
   TrendingUp,
   TrendingDown,
+  Download,
+  FileText,
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { StatCard } from "@/components/stat-card"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Table,
   TableBody,
@@ -23,33 +26,45 @@ import {
   incomeRecords,
   expenses,
   getCashAtHand,
+  cashFlowTrends,
   formatCurrency,
 } from "@/lib/mock-data"
+import { useCurrency } from "@/lib/currency-context"
+import { exportToCSV, exportToPDF } from "@/lib/export-utils"
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Legend,
 } from "recharts"
 
 export default function CashPage() {
+  const { currency } = useCurrency()
   const cash = getCashAtHand()
+  const activeCash = currency === "USD" ? cash.usd : cash.zwl
 
   // Build a ledger of cash-in and cash-out transactions
-  const cashInRecords = incomeRecords.map((r) => ({
-    id: r.id,
-    date: r.date,
-    type: "in" as const,
-    description: `Received from ${r.assemblyName}`,
-    amount: r.received,
-    assembly: r.assemblyName,
-  }))
+  const cashInRecords = incomeRecords
+    .filter((r) => r.currency === currency)
+    .map((r) => ({
+      id: r.id,
+      date: r.date,
+      type: "in" as const,
+      description: `Received from ${r.assemblyName}`,
+      amount: r.received,
+      assembly: r.assemblyName,
+    }))
 
   const cashOutRecords = expenses
-    .filter((e) => e.paymentSource === "CASH_AT_HAND")
+    .filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === currency)
     .map((e) => ({
       id: e.id,
       date: e.date,
@@ -77,15 +92,21 @@ export default function CashPage() {
     })
     .reverse()
 
-  // Monthly cash flow for chart
-  const monthlyCashFlow = [
-    { month: "Sep", inflow: 82000, outflow: 35000 },
-    { month: "Oct", inflow: 95000, outflow: 42000 },
-    { month: "Nov", inflow: 88000, outflow: 38000 },
-    { month: "Dec", inflow: 120000, outflow: 55000 },
-    { month: "Jan", inflow: 108000, outflow: 45000 },
-    { month: "Feb", inflow: 83000, outflow: 28500 },
-  ]
+  function handleExportCSV() {
+    const rows = transactionsWithBalance.map((t) => ({
+      Date: t.date,
+      Type: t.type === "in" ? "Inflow" : "Outflow",
+      Description: t.description,
+      Assembly: t.assembly,
+      Amount: t.type === "in" ? t.amount : -t.amount,
+      "Running Balance": t.runningBalance,
+      Currency: currency,
+    }))
+    exportToCSV(rows, `cash-at-hand-${currency.toLowerCase()}`)
+  }
+
+  const fmt = (v: number) => formatCurrency(v, currency)
+  const chartFmt = (v: number) => currency === "ZWL" ? `${(v / 1000000).toFixed(1)}M` : `$${v}`
 
   return (
     <>
@@ -93,53 +114,145 @@ export default function CashPage() {
         title="Cash At Hand"
         description="Digital wallet showing all cash inflows and outflows"
         breadcrumb="Cash At Hand"
-      />
+      >
+        <Button variant="outline" size="sm" onClick={handleExportCSV}>
+          <Download className="mr-2 h-4 w-4" />
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => exportToPDF("Cash At Hand Report", "cash-content")}>
+          <FileText className="mr-2 h-4 w-4" />
+          PDF
+        </Button>
+      </PageHeader>
 
-      <div className="flex flex-col gap-6 p-6">
+      <div className="flex flex-col gap-6 p-6" id="cash-content">
         {/* Summary */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <StatCard
-            title="Cash In"
-            value={formatCurrency(cash.cashIn)}
+            title={`Cash In (${currency})`}
+            value={fmt(activeCash.cashIn)}
             icon={TrendingUp}
             description="Total received from assemblies"
             iconClassName="bg-success/10 text-success"
           />
           <StatCard
-            title="Cash Out"
-            value={formatCurrency(cash.cashOut)}
+            title={`Cash Out (${currency})`}
+            value={fmt(activeCash.cashOut)}
             icon={TrendingDown}
             description="Total expenses from cash"
             iconClassName="bg-destructive/10 text-destructive"
           />
           <StatCard
-            title="Cash Balance"
-            value={formatCurrency(cash.balance)}
+            title={`Cash Balance (${currency})`}
+            value={fmt(activeCash.balance)}
             icon={Wallet}
             description="Available cash at hand"
             iconClassName="bg-primary/10 text-primary"
           />
         </div>
 
-        {/* Cash Flow Chart */}
+        {/* Charts Row */}
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Cash Flow Bar Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Cash Flow</CardTitle>
+              <CardDescription>Monthly inflows vs outflows (USD equiv.)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cashFlowTrends} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 16%, 90%)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(220, 10%, 46%)" />
+                    <YAxis
+                      tickFormatter={(v: number) => `$${v}`}
+                      tick={{ fontSize: 12 }}
+                      stroke="hsl(220, 10%, 46%)"
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                      contentStyle={{
+                        backgroundColor: "hsl(0, 0%, 100%)",
+                        border: "1px solid hsl(214, 16%, 90%)",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Legend iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
+                    <Bar dataKey="inflow" fill="hsl(160, 64%, 43%)" radius={[4, 4, 0, 0]} name="Inflow" />
+                    <Bar dataKey="outflow" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} name="Outflow" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Balance Trend Area Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base font-semibold">Balance Trend</CardTitle>
+              <CardDescription>Running cash balance over time (USD equiv.)</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-[280px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={cashFlowTrends} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="balanceGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="hsl(213, 94%, 40%)" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="hsl(213, 94%, 40%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 16%, 90%)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(220, 10%, 46%)" />
+                    <YAxis
+                      tickFormatter={(v: number) => `$${v}`}
+                      tick={{ fontSize: 12 }}
+                      stroke="hsl(220, 10%, 46%)"
+                    />
+                    <Tooltip
+                      formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
+                      contentStyle={{
+                        backgroundColor: "hsl(0, 0%, 100%)",
+                        border: "1px solid hsl(214, 16%, 90%)",
+                        borderRadius: "8px",
+                        fontSize: "12px",
+                      }}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="balance"
+                      stroke="hsl(213, 94%, 40%)"
+                      strokeWidth={2.5}
+                      fill="url(#balanceGrad)"
+                      name="Balance"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Net Cash Flow Line */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-semibold">Cash Flow</CardTitle>
-            <CardDescription>Monthly inflows vs outflows</CardDescription>
+            <CardTitle className="text-base font-semibold">Monthly Net Cash Flow</CardTitle>
+            <CardDescription>Inflow minus outflow each month (USD equiv.)</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[280px]">
+            <div className="h-[240px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={monthlyCashFlow} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+                <LineChart
+                  data={cashFlowTrends.map((d) => ({ ...d, net: d.inflow - d.outflow }))}
+                  margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(214, 16%, 90%)" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="hsl(220, 10%, 46%)" />
-                  <YAxis
-                    tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`}
-                    tick={{ fontSize: 12 }}
-                    stroke="hsl(220, 10%, 46%)"
-                  />
+                  <YAxis tickFormatter={(v: number) => `$${v}`} tick={{ fontSize: 12 }} stroke="hsl(220, 10%, 46%)" />
                   <Tooltip
-                    formatter={(value: number) => [`NGN ${value.toLocaleString()}`, undefined]}
+                    formatter={(value: number) => [`$${value.toLocaleString()}`, undefined]}
                     contentStyle={{
                       backgroundColor: "hsl(0, 0%, 100%)",
                       border: "1px solid hsl(214, 16%, 90%)",
@@ -147,9 +260,11 @@ export default function CashPage() {
                       fontSize: "12px",
                     }}
                   />
-                  <Bar dataKey="inflow" fill="hsl(160, 64%, 43%)" radius={[4, 4, 0, 0]} name="Cash In" />
-                  <Bar dataKey="outflow" fill="hsl(0, 72%, 51%)" radius={[4, 4, 0, 0]} name="Cash Out" />
-                </BarChart>
+                  <Line type="monotone" dataKey="net" stroke="hsl(160, 64%, 43%)" strokeWidth={2.5} dot={{ r: 4, fill: "hsl(160, 64%, 43%)" }} name="Net Flow" />
+                  <Line type="monotone" dataKey="inflow" stroke="hsl(213, 94%, 40%)" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Inflow" />
+                  <Line type="monotone" dataKey="outflow" stroke="hsl(0, 72%, 51%)" strokeWidth={1.5} strokeDasharray="5 5" dot={false} name="Outflow" />
+                  <Legend iconSize={8} wrapperStyle={{ fontSize: "12px" }} />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
@@ -158,61 +273,73 @@ export default function CashPage() {
         {/* Transaction Ledger */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base font-semibold">Transaction Ledger</CardTitle>
-            <CardDescription>All cash inflows and outflows with running balance</CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base font-semibold">Transaction Ledger</CardTitle>
+                <CardDescription>All {currency} cash inflows and outflows with running balance</CardDescription>
+              </div>
+              <Badge variant="outline">{transactionsWithBalance.length} transactions</Badge>
+            </div>
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/50">
-                  <TableHead>Date</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Assembly</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Running Balance</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {transactionsWithBalance.map((t) => (
-                  <TableRow key={`${t.type}-${t.id}`}>
-                    <TableCell className="font-medium">
-                      {new Date(t.date).toLocaleDateString("en-GB", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        {t.type === "in" ? (
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-success/10">
-                            <ArrowDownLeft className="h-3.5 w-3.5 text-success" />
-                          </div>
-                        ) : (
-                          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive/10">
-                            <ArrowUpRight className="h-3.5 w-3.5 text-destructive" />
-                          </div>
-                        )}
-                        <span className="text-sm">{t.type === "in" ? "Inflow" : "Outflow"}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{t.description}</TableCell>
-                    <TableCell>
-                      <Badge variant="secondary" className="font-normal">{t.assembly}</Badge>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      <span className={t.type === "in" ? "text-success font-medium" : "text-destructive font-medium"}>
-                        {t.type === "in" ? "+" : "-"}{formatCurrency(t.amount)}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums font-semibold">
-                      {formatCurrency(t.runningBalance)}
-                    </TableCell>
+            {transactionsWithBalance.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 py-12">
+                <Wallet className="h-10 w-10 text-muted-foreground/40" />
+                <p className="text-sm text-muted-foreground">No {currency} transactions found.</p>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/50">
+                    <TableHead>Date</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Assembly</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Running Balance</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {transactionsWithBalance.map((t) => (
+                    <TableRow key={`${t.type}-${t.id}`}>
+                      <TableCell className="font-medium">
+                        {new Date(t.date).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          {t.type === "in" ? (
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-success/10">
+                              <ArrowDownLeft className="h-3.5 w-3.5 text-success" />
+                            </div>
+                          ) : (
+                            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-destructive/10">
+                              <ArrowUpRight className="h-3.5 w-3.5 text-destructive" />
+                            </div>
+                          )}
+                          <span className="text-sm">{t.type === "in" ? "Inflow" : "Outflow"}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">{t.description}</TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="font-normal">{t.assembly}</Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        <span className={t.type === "in" ? "text-success font-medium" : "text-destructive font-medium"}>
+                          {t.type === "in" ? "+" : "-"}{fmt(t.amount)}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-semibold">
+                        {fmt(t.runningBalance)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>

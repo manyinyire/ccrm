@@ -4,6 +4,7 @@ import React from "react"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar"
+import { CurrencyProvider } from "@/lib/currency-context"
 
 export default function AppLayout({
   children,
@@ -11,9 +12,11 @@ export default function AppLayout({
   children: React.ReactNode
 }) {
   return (
-    <SidebarProvider>
-      <AppSidebar />
-      <SidebarInset>{children}</SidebarInset>
-    </SidebarProvider>
+    <CurrencyProvider>
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>{children}</SidebarInset>
+      </SidebarProvider>
+    </CurrencyProvider>
   )
 }

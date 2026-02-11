@@ -15,6 +15,7 @@ import {
   Package,
   FolderKanban,
   HandCoins,
+  Store,
   LogOut,
 } from "lucide-react"
 import {
@@ -46,6 +47,7 @@ const mainNav = [
   { title: "Income", href: "/income", icon: DollarSign },
   { title: "Receivables", href: "/receivables", icon: HandCoins },
   { title: "Expenses", href: "/expenses", icon: Receipt },
+  { title: "Ventures", href: "/ventures", icon: Store },
   { title: "Projects", href: "/projects", icon: FolderKanban },
   { title: "Owed Ledger", href: "/ledger", icon: BookOpen },
   { title: "Cash At Hand", href: "/cash", icon: Wallet },

@@ -66,6 +66,67 @@ enum ProjectStatus {
   COMPLETED
 }
 
+enum VentureStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Venture {
+  id          String        @id @default(cuid())
+  name        String
+  description String        @default("")
+  status      VentureStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  expenses    VentureExpense[]
+  allocations VentureAllocation[]
+  payments    VenturePayment[]
+}
+
+model VentureExpense {
+  id          String   @id @default(cuid())
+  ventureId   String
+  venture     Venture  @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  date        DateTime
+  currency    Currency
+  amount      Float
+  description String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VentureAllocation {
+  id          String   @id @default(cuid())
+  ventureId   String
+  venture     Venture  @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  assemblyId  String
+  assembly    Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  date        DateTime
+  currency    Currency
+  quantity    Int      @default(0)
+  unitPrice   Float    @default(0)
+  totalAmount Float    @default(0)
+  description String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model VenturePayment {
+  id            String        @id @default(cuid())
+  ventureId     String
+  venture       Venture       @relation(fields: [ventureId], references: [id], onDelete: Cascade)
+  assemblyId    String
+  assembly      Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  date          DateTime
+  currency      Currency
+  amount        Float
+  paymentMethod PaymentMethod
+  description   String        @default("")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
 model Project {
   id          String        @id @default(cuid())
   name        String
@@ -99,11 +160,13 @@ model Assembly {
   status    AssemblyStatus @default(ACTIVE)
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
-  users        User[]
-  incomes      Income[]
-  expenses     Expense[]
-  assets       Asset[]
-  receivables  Receivable[]
+  users               User[]
+  incomes             Income[]
+  expenses            Expense[]
+  assets              Asset[]
+  receivables         Receivable[]
+  ventureAllocations  VentureAllocation[]
+  venturePayments     VenturePayment[]
 }
 
 model IncomeItem {

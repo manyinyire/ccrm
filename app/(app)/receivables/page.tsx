@@ -42,6 +42,9 @@ type Receivable = {
   id: string
   assemblyId: string
   assemblyName: string
+  incomeId: string | null
+  incomeDate: string | null
+  incomeTotalAmount: number | null
   date: string
   currency: string
   amount: number
@@ -150,7 +153,7 @@ export default function ReceivablesPage() {
               <DialogTitle>Record Receivable</DialogTitle>
               <DialogDescription>Record money received from an assembly. This deducts from their outstanding balance.</DialogDescription>
             </DialogHeader>
-            <ReceivableForm assemblies={assemblies} onClose={() => { setDialogOpen(false); fetchData() }} />
+            <ReceivableForm assemblies={assemblies} incomeRecords={incomeRecords} receivables={receivables} onClose={() => { setDialogOpen(false); fetchData() }} />
           </DialogContent>
         </Dialog>
       </PageHeader>
@@ -242,10 +245,11 @@ export default function ReceivablesPage() {
                 <TableRow className="bg-muted/50">
                   <TableHead>Date</TableHead>
                   <TableHead>Assembly</TableHead>
+                  <TableHead>Linked Income</TableHead>
                   <TableHead>Method</TableHead>
                   <TableHead>Cur.</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Sent to Pastor</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Description</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
@@ -253,7 +257,7 @@ export default function ReceivablesPage() {
               <TableBody>
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center text-muted-foreground py-8">No receivables recorded yet.</TableCell>
+                    <TableCell colSpan={9} className="text-center text-muted-foreground py-8">No receivables recorded yet.</TableCell>
                   </TableRow>
                 )}
                 {filtered.map((rec) => (
@@ -263,6 +267,16 @@ export default function ReceivablesPage() {
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary" className="font-normal">{rec.assemblyName}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {rec.incomeDate ? (
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(rec.incomeDate).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                          {rec.incomeTotalAmount != null && ` · ${formatCurrency(rec.incomeTotalAmount, rec.currency as any)}`}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/50">—</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{rec.paymentMethod === "ECOCASH" ? "EcoCash" : "Cash"}</Badge>
@@ -276,10 +290,10 @@ export default function ReceivablesPage() {
                     <TableCell>
                       {rec.sentToPastor ? (
                         <Badge className="bg-success text-success-foreground">
-                          <ArrowUpRight className="mr-1 h-3 w-3" />Yes
+                          <ArrowUpRight className="mr-1 h-3 w-3" />Sent to Pastor
                         </Badge>
                       ) : (
-                        <span className="text-muted-foreground text-sm">No</span>
+                        <Badge variant="outline" className="text-primary">Received</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-muted-foreground truncate max-w-[150px]">{rec.description || "—"}</TableCell>
@@ -302,27 +316,78 @@ export default function ReceivablesPage() {
   )
 }
 
-function ReceivableForm({ assemblies, onClose }: { assemblies: Assembly[]; onClose: () => void }) {
+function ReceivableForm({ assemblies, incomeRecords, receivables, onClose }: {
+  assemblies: Assembly[]
+  incomeRecords: IncomeRecord[]
+  receivables: Receivable[]
+  onClose: () => void
+}) {
   const [loading, setLoading] = useState(false)
-  const [form, setForm] = useState({
-    date: new Date().toISOString().split("T")[0],
-    assemblyId: assemblies.find((a) => a.status === "ACTIVE")?.id || "",
-    currency: "USD",
-    amount: 0,
-    paymentMethod: "CASH",
-    sentToPastor: false,
-    description: "",
-  })
+  const [assemblyId, setAssemblyId] = useState(assemblies.find((a) => a.status === "ACTIVE")?.id || "")
+  const [incomeId, setIncomeId] = useState("")
+  const [amount, setAmount] = useState(0)
+  const [paymentMethod, setPaymentMethod] = useState("CASH")
+  const [sentToPastor, setSentToPastor] = useState(false)
+  const [description, setDescription] = useState("")
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0])
 
-  const set = (key: string, value: string | number | boolean) => setForm((f) => ({ ...f, [key]: value }))
+  // Compute unsettled income for selected assembly
+  const unsettledIncome = incomeRecords
+    .filter((inc) => {
+      if (inc.assemblyId !== assemblyId) return false
+      // Calculate how much has been received against this income
+      const receivedForIncome = receivables
+        .filter((r) => r.incomeId === inc.id)
+        .reduce((sum, r) => sum + r.amount, 0)
+      const remaining = inc.totalAmount - receivedForIncome
+      return remaining > 0.01 // has unsettled balance
+    })
+    .map((inc) => {
+      const receivedForIncome = receivables
+        .filter((r) => r.incomeId === inc.id)
+        .reduce((sum, r) => sum + r.amount, 0)
+      return {
+        ...inc,
+        received: receivedForIncome,
+        remaining: inc.totalAmount - receivedForIncome,
+      }
+    })
+
+  // When assembly changes, reset income selection
+  const handleAssemblyChange = (v: string) => {
+    setAssemblyId(v)
+    setIncomeId("")
+    setAmount(0)
+  }
+
+  // When income is selected, auto-fill amount with remaining balance
+  const handleIncomeChange = (v: string) => {
+    setIncomeId(v)
+    const selected = unsettledIncome.find((inc) => inc.id === v)
+    if (selected) {
+      setAmount(selected.remaining)
+    }
+  }
+
+  const selectedIncome = unsettledIncome.find((inc) => inc.id === incomeId)
 
   const handleSubmit = async () => {
-    if (!form.assemblyId || !form.amount) return
+    if (!assemblyId || !amount || !incomeId) return
     setLoading(true)
+    const currency = selectedIncome?.currency || "USD"
     await fetch("/api/receivables", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        assemblyId,
+        incomeId,
+        date,
+        currency,
+        amount,
+        paymentMethod,
+        sentToPastor,
+        description,
+      }),
     })
     setLoading(false)
     onClose()
@@ -330,73 +395,128 @@ function ReceivableForm({ assemblies, onClose }: { assemblies: Assembly[]; onClo
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="rec-date">Date</Label>
-          <Input id="rec-date" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Assembly</Label>
-          <Select value={form.assemblyId} onValueChange={(v) => set("assemblyId", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {assemblies.filter((a) => a.status === "ACTIVE").map((a) => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="rec-amount">Amount</Label>
-          <Input id="rec-amount" type="number" placeholder="0" onChange={(e) => set("amount", parseFloat(e.target.value) || 0)} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Currency</Label>
-          <Select value={form.currency} onValueChange={(v) => set("currency", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="USD">USD</SelectItem>
-              <SelectItem value="ZWL">ZWL</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Payment Method</Label>
-          <Select value={form.paymentMethod} onValueChange={(v) => set("paymentMethod", v)}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="CASH">Cash</SelectItem>
-              <SelectItem value="ECOCASH">EcoCash</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id="sent-to-pastor"
-          checked={form.sentToPastor}
-          onCheckedChange={(checked) => set("sentToPastor", !!checked)}
-        />
-        <Label htmlFor="sent-to-pastor" className="text-sm font-normal cursor-pointer">
-          Sent to Pastor (forwarded to pastor — deducts from assembly balance)
-        </Label>
-      </div>
+      {/* Step 1: Select Assembly */}
       <div className="flex flex-col gap-2">
-        <Label htmlFor="rec-desc">Description (optional)</Label>
-        <Input id="rec-desc" placeholder="e.g. Weekly remittance" value={form.description} onChange={(e) => set("description", e.target.value)} />
+        <Label>Assembly</Label>
+        <Select value={assemblyId} onValueChange={handleAssemblyChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select assembly" />
+          </SelectTrigger>
+          <SelectContent>
+            {assemblies.filter((a) => a.status === "ACTIVE").map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
+
+      {/* Step 2: Select unsettled income */}
+      {assemblyId && (
+        <div className="flex flex-col gap-2">
+          <Label>Unsettled Income ({unsettledIncome.length} pending)</Label>
+          {unsettledIncome.length === 0 ? (
+            <p className="text-sm text-muted-foreground rounded-md border border-dashed p-3 text-center">
+              No unsettled income for this assembly.
+            </p>
+          ) : (
+            <Select value={incomeId} onValueChange={handleIncomeChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select income to settle" />
+              </SelectTrigger>
+              <SelectContent>
+                {unsettledIncome.map((inc) => (
+                  <SelectItem key={inc.id} value={inc.id}>
+                    {new Date(inc.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                    {" — "}
+                    {formatCurrency(inc.totalAmount, inc.currency as any)}
+                    {inc.received > 0 && ` (${formatCurrency(inc.remaining, inc.currency as any)} remaining)`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+      )}
+
+      {/* Step 3: Show selected income details & payment info */}
+      {selectedIncome && (
+        <>
+          <Card className="border-primary/20 bg-primary/5">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between text-sm">
+                <div>
+                  <p className="font-medium">
+                    {new Date(selectedIncome.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Total: {formatCurrency(selectedIncome.totalAmount, selectedIncome.currency as any)}
+                    {selectedIncome.received > 0 && ` · Already received: ${formatCurrency(selectedIncome.received, selectedIncome.currency as any)}`}
+                  </p>
+                </div>
+                <Badge variant="outline" className="font-semibold">
+                  Remaining: {formatCurrency(selectedIncome.remaining, selectedIncome.currency as any)}
+                </Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rec-amount">Amount ({selectedIncome.currency})</Label>
+              <Input
+                id="rec-amount"
+                type="number"
+                value={amount || ""}
+                onChange={(e) => setAmount(parseFloat(e.target.value) || 0)}
+                max={selectedIncome.remaining}
+              />
+              {amount > selectedIncome.remaining && (
+                <p className="text-xs text-destructive">Cannot exceed remaining balance</p>
+              )}
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>Payment Method</Label>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="ECOCASH">EcoCash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="rec-date">Date</Label>
+              <Input id="rec-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="sent-to-pastor"
+              checked={sentToPastor}
+              onCheckedChange={(checked) => setSentToPastor(!!checked)}
+            />
+            <Label htmlFor="sent-to-pastor" className="text-sm font-normal cursor-pointer">
+              Sent to Pastor (forwarded to pastor — deducts from assembly balance)
+            </Label>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rec-desc">Description (optional)</Label>
+            <Input id="rec-desc" placeholder="e.g. Weekly remittance" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+        </>
+      )}
+
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>Cancel</Button>
-        <Button onClick={handleSubmit} disabled={loading || !form.assemblyId || !form.amount}>
-          {loading ? "Saving..." : "Record Receivable"}
+        <Button
+          onClick={handleSubmit}
+          disabled={loading || !assemblyId || !incomeId || !amount || (selectedIncome ? amount > selectedIncome.remaining : false)}
+        >
+          {loading ? "Saving..." : "Settle Payment"}
         </Button>
       </DialogFooter>
     </div>

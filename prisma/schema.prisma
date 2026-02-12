@@ -217,6 +217,8 @@ model Receivable {
   id            String        @id @default(cuid())
   assemblyId    String
   assembly      Assembly      @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  incomeId      String?
+  income        Income?       @relation(fields: [incomeId], references: [id])
   date          DateTime
   currency      Currency
   amount        Float
@@ -237,29 +239,30 @@ model ExpenseCategory {
 }
 
 model Income {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   assemblyId     String
-  assembly       Assembly @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
+  assembly       Assembly     @relation(fields: [assemblyId], references: [id], onDelete: Cascade)
   projectId      String?
-  project        Project?  @relation(fields: [projectId], references: [id])
+  project        Project?     @relation(fields: [projectId], references: [id])
   date           DateTime
   currency       Currency
-  adults         Int      @default(0)
-  children       Int      @default(0)
-  newSouls       Int      @default(0)
-  offering       Float    @default(0)
-  tithe          Float    @default(0)
-  feastBadges    Float    @default(0)
-  firewood       Float    @default(0)
-  instruments    Float    @default(0)
-  pastorsWelfare Float    @default(0)
-  customItems    Json     @default("{}")
-  totalAmount    Float    @default(0)
-  sentToPastor   Float    @default(0)
-  received       Float    @default(0)
-  balance        Float    @default(0)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  adults         Int          @default(0)
+  children       Int          @default(0)
+  newSouls       Int          @default(0)
+  offering       Float        @default(0)
+  tithe          Float        @default(0)
+  feastBadges    Float        @default(0)
+  firewood       Float        @default(0)
+  instruments    Float        @default(0)
+  pastorsWelfare Float        @default(0)
+  customItems    Json         @default("{}")
+  totalAmount    Float        @default(0)
+  sentToPastor   Float        @default(0)
+  received       Float        @default(0)
+  balance        Float        @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  receivables    Receivable[]
 }
 
 model OwedPerson {

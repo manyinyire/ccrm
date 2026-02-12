@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const records = await prisma.receivable.findMany({
@@ -28,6 +30,9 @@ export async function POST(req: Request) {
       },
       include: { assembly: { select: { name: true } } },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Receivable", `Created receivable: ${record.currency} ${record.amount} (${record.paymentMethod})`, record.id)
+
     return NextResponse.json({ ...record, assemblyName: record.assembly.name }, { status: 201 })
   } catch (error) {
     console.error("Create receivable error:", error)

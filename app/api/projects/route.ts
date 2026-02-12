@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const projects = await prisma.project.findMany({
@@ -21,6 +23,9 @@ export async function POST(req: Request) {
         budget: parseFloat(body.budget) || 0,
       },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Project", `Created project: ${project.name}`, project.id)
+
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
     console.error("Create project error:", error)

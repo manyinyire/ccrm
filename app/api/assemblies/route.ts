@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const assemblies = await prisma.assembly.findMany({
@@ -19,6 +21,9 @@ export async function POST(req: Request) {
         status: body.status?.toUpperCase() || "ACTIVE",
       },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Assembly", `Created assembly: ${assembly.name} (${assembly.location})`, assembly.id)
+
     return NextResponse.json(assembly, { status: 201 })
   } catch (error) {
     console.error("Create assembly error:", error)

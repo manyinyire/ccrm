@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const records = await prisma.expense.findMany({
@@ -40,6 +42,9 @@ export async function POST(req: Request) {
         owedPerson: { select: { id: true, name: true } },
       },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Expense", `Created expense: ${record.description} — ${record.currency} ${record.amount}`, record.id)
+
     return NextResponse.json(
       { ...record, assemblyName: record.assembly.name, owedPersonName: record.owedPerson?.name || null },
       { status: 201 }

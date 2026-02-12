@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const assets = await prisma.asset.findMany({
@@ -33,6 +35,9 @@ export async function POST(req: Request) {
       },
       include: { assembly: { select: { name: true } } },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Asset", `Created asset: ${asset.name} (${asset.category})`, asset.id)
+
     return NextResponse.json({ ...asset, assemblyName: asset.assembly.name }, { status: 201 })
   } catch (error) {
     console.error("Create asset error:", error)

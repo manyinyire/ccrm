@@ -2,10 +2,12 @@ import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
 import { compare } from "bcryptjs"
 import { prisma } from "@/lib/prisma"
+import { logAudit } from "@/lib/audit"
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 hours
   },
   pages: {
     signIn: "/login",
@@ -30,6 +32,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null
         }
 
+        if (user.status !== "active") {
+          return null
+        }
+
         const isPasswordValid = await compare(
           credentials.password as string,
           user.password
@@ -38,6 +44,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!isPasswordValid) {
           return null
         }
+
+        // Log successful login
+        await logAudit({
+          userId: user.id,
+          userName: user.name,
+          userEmail: user.email,
+          action: "LOGIN",
+          entity: "Session",
+          description: `User ${user.name} logged in`,
+        })
 
         return {
           id: user.id,

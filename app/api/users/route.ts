@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import { hash } from "bcryptjs"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const users = await prisma.user.findMany({
@@ -53,6 +55,9 @@ export async function POST(req: Request) {
         createdAt: true,
       },
     })
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "User", `Created user: ${user.name} (${user.email}) with role ${user.role}`, user.id)
+
     return NextResponse.json(user, { status: 201 })
   } catch (error) {
     console.error("Create user error:", error)

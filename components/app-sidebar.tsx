@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
@@ -17,6 +18,8 @@ import {
   HandCoins,
   Store,
   LogOut,
+  Activity,
+  Settings,
 } from "lucide-react"
 import {
   Sidebar,
@@ -60,12 +63,19 @@ const adminNav = [
   { title: "Assemblies", href: "/assemblies", icon: Church, perm: "canManageAssemblies" },
   { title: "Users", href: "/users", icon: Users, perm: "canManageUsers" },
   { title: "Reports", href: "/reports", icon: TrendingUp, perm: "canViewReports" },
+  { title: "Audit Logs", href: "/audit-logs", icon: Activity, perm: "canManageUsers" },
+  { title: "Settings", href: "/settings", icon: Settings, perm: "canManageUsers" },
 ]
 
 export function AppSidebar() {
   const pathname = usePathname()
   const { data: session } = useSession()
   const { currency, setCurrency } = useCurrency()
+  const [orgSettings, setOrgSettings] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then(setOrgSettings).catch(() => {})
+  }, [])
 
   const { permissions, isSuperAdmin } = usePermissions()
   const userName = session?.user?.name || "User"
@@ -85,15 +95,19 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Church className="h-4 w-4" />
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground overflow-hidden">
+            {orgSettings.logoUrl ? (
+              <img src={orgSettings.logoUrl} alt="Logo" className="h-full w-full object-contain" />
+            ) : (
+              <Church className="h-4 w-4" />
+            )}
           </div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold text-sidebar-primary-foreground">
-              Church CRM
+              {orgSettings.orgName || "Church CRM"}
             </span>
             <span className="text-xs text-sidebar-foreground/60">
-              Finance Manager
+              {orgSettings.orgTagline || "Finance Manager"}
             </span>
           </div>
         </Link>

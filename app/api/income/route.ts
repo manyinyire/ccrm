@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { auth } from "@/lib/auth"
+import { logAuditFromSession } from "@/lib/audit"
 
 export async function GET() {
   const records = await prisma.income.findMany({
@@ -91,6 +93,9 @@ export async function POST(req: Request) {
         },
       })
     }
+
+    const session = await auth()
+    await logAuditFromSession(session, "CREATE", "Income", `Created income record for ${record.assembly.name} — ${record.currency} ${record.totalAmount}`, record.id)
 
     return NextResponse.json({ ...record, assemblyName: record.assembly.name }, { status: 201 })
   } catch (error) {

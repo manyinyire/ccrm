@@ -2,9 +2,8 @@
 
 import React, { Suspense } from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { signIn } from "next-auth/react"
 import { Church, Eye, EyeOff, Lock, Mail } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -29,8 +28,15 @@ function LoginForm() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
+  const [settings, setSettings] = useState<Record<string, string>>({})
 
-  const registered = searchParams.get("registered")
+  useEffect(() => {
+    fetch("/api/settings").then((r) => r.json()).then(setSettings).catch(() => {})
+  }, [])
+
+  const orgName = settings.orgName || "Church CRM"
+  const orgTagline = settings.orgTagline || "Finance Manager"
+  const logoUrl = settings.logoUrl || ""
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
 
   async function handleLogin(e: React.FormEvent) {
@@ -64,12 +70,16 @@ function LoginForm() {
       {/* Left Panel - Branding */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between bg-[hsl(220,20%,10%)] p-12 text-[hsl(0,0%,100%)]">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(213,94%,55%)]">
-            <Church className="h-5 w-5 text-[hsl(0,0%,100%)]" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[hsl(213,94%,55%)] overflow-hidden">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
+            ) : (
+              <Church className="h-5 w-5 text-[hsl(0,0%,100%)]" />
+            )}
           </div>
           <div className="flex flex-col">
-            <span className="text-lg font-bold tracking-tight">Church CRM</span>
-            <span className="text-xs text-[hsl(210,14%,60%)]">Finance Manager</span>
+            <span className="text-lg font-bold tracking-tight">{orgName}</span>
+            <span className="text-xs text-[hsl(210,14%,60%)]">{orgTagline}</span>
           </div>
         </div>
 
@@ -98,7 +108,7 @@ function LoginForm() {
         </div>
 
         <p className="text-xs text-[hsl(210,14%,50%)]">
-          Church Assembly Finance CRM v2.0
+          {orgName} v2.0
         </p>
       </div>
 
@@ -106,10 +116,14 @@ function LoginForm() {
       <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 lg:px-12">
         {/* Mobile Logo */}
         <div className="mb-8 flex items-center gap-3 lg:hidden">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary">
-            <Church className="h-5 w-5 text-primary-foreground" />
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary overflow-hidden">
+            {logoUrl ? (
+              <img src={logoUrl} alt="Logo" className="h-full w-full object-contain" />
+            ) : (
+              <Church className="h-5 w-5 text-primary-foreground" />
+            )}
           </div>
-          <span className="text-xl font-bold">Church CRM</span>
+          <span className="text-xl font-bold">{orgName}</span>
         </div>
 
         <Card className="w-full max-w-md border-0 shadow-none lg:border lg:shadow-sm">
@@ -120,12 +134,6 @@ function LoginForm() {
                 Sign in to your account to continue
               </p>
             </div>
-
-            {registered && (
-              <div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-400">
-                Account created successfully! Please sign in.
-              </div>
-            )}
 
             {error && (
               <div className="mb-4 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
@@ -198,12 +206,6 @@ function LoginForm() {
               </Button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-muted-foreground">
-              Don&apos;t have an account?{" "}
-              <Link href="/register" className="font-medium text-primary hover:underline">
-                Create account
-              </Link>
-            </p>
           </CardContent>
         </Card>
       </div>

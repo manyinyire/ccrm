@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, Suspense } from "react"
 import { Download, FileText, ArrowLeft, Filter } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -37,6 +37,14 @@ type Project = {
 }
 
 export default function ProjectReportsPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center p-12"><span className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>}>
+      <ProjectReportsContent />
+    </Suspense>
+  )
+}
+
+function ProjectReportsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const preselectedId = searchParams.get("id")

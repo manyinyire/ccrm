@@ -9,9 +9,10 @@ export default auth((req) => {
   const publicRoutes = ["/login", "/register"]
   const isPublicRoute = publicRoutes.some((route) => pathname.startsWith(route))
   const isAuthApi = pathname.startsWith("/api/auth")
+  const isPublicApi = pathname.startsWith("/api/settings")
 
-  // Allow public routes and auth API
-  if (isPublicRoute || isAuthApi) {
+  // Allow public routes, auth API, and public APIs
+  if (isPublicRoute || isAuthApi || isPublicApi) {
     // Redirect logged-in users away from login/register
     if (isLoggedIn && isPublicRoute) {
       return NextResponse.redirect(new URL("/dashboard", req.nextUrl))

@@ -20,6 +20,7 @@ import {
   LogOut,
   Activity,
   Settings,
+  BookOpenCheck,
 } from "lucide-react"
 import {
   Sidebar,
@@ -57,6 +58,7 @@ const mainNav = [
   { title: "Owed Ledger", href: "/ledger", icon: BookOpen, perm: "canManageExpenses" },
   { title: "Cash At Hand", href: "/cash", icon: Wallet, perm: "canManageIncome" },
   { title: "Assets", href: "/assets", icon: Package, perm: "canManageAssets" },
+  { title: "Accounting", href: "/accounting", icon: BookOpenCheck, perm: "canViewReports" },
 ]
 
 const adminNav = [

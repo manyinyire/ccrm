@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { logAuditFromSession } from "@/lib/audit"
+import { journalForExpense } from "@/lib/journal"
 
 export async function GET() {
   const records = await prisma.expense.findMany({
@@ -42,6 +43,17 @@ export async function POST(req: Request) {
         owedPerson: { select: { id: true, name: true } },
       },
     })
+    await journalForExpense({
+      id: record.id,
+      assemblyId: record.assemblyId,
+      date: record.date,
+      currency: record.currency as "USD" | "ZWL",
+      amount: record.amount,
+      paymentSource: record.paymentSource,
+      projectId: record.projectId,
+      description: record.description,
+    })
+
     const session = await auth()
     await logAuditFromSession(session, "CREATE", "Expense", `Created expense: ${record.description} — ${record.currency} ${record.amount}`, record.id)
 

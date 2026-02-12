@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
+import { journalForRefund } from "@/lib/journal"
 
 export async function GET() {
   const refunds = await prisma.refund.findMany({
@@ -24,6 +25,14 @@ export async function POST(req: Request) {
         date: new Date(body.date),
         note: body.note || "",
       },
+    })
+
+    await journalForRefund({
+      id: refund.id,
+      date: refund.date,
+      currency: refund.currency as "USD" | "ZWL",
+      amount: refund.amount,
+      expenseId: refund.expenseId,
     })
 
     // Update expense status based on total refunds

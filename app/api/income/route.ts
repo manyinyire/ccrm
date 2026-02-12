@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { logAuditFromSession } from "@/lib/audit"
+import { journalForIncome } from "@/lib/journal"
 
 export async function GET() {
   const records = await prisma.income.findMany({
@@ -68,9 +69,25 @@ export async function POST(req: Request) {
       include: { assembly: { select: { name: true } } },
     })
 
+    // Journal entries for main income record
+    await journalForIncome({
+      id: record.id,
+      assemblyId: body.assemblyId,
+      date: new Date(body.date),
+      currency: body.currency,
+      offering: body.offering || 0,
+      tithe: body.tithe || 0,
+      feastBadges: body.feastBadges || 0,
+      firewood: body.firewood || 0,
+      instruments: body.instruments || 0,
+      pastorsWelfare: body.pastorsWelfare || 0,
+      customItems: regularCustomItems,
+      totalAmount,
+    })
+
     // Create separate income records for each project amount, linked via projectId
     for (const [projectId, amount] of Object.entries(projectAmounts)) {
-      await prisma.income.create({
+      const projRecord = await prisma.income.create({
         data: {
           assemblyId: body.assemblyId,
           projectId,
@@ -91,6 +108,16 @@ export async function POST(req: Request) {
           received: 0,
           balance: amount,
         },
+      })
+      await journalForIncome({
+        id: projRecord.id,
+        assemblyId: body.assemblyId,
+        date: new Date(body.date),
+        currency: body.currency,
+        offering: 0, tithe: 0, feastBadges: 0, firewood: 0, instruments: 0, pastorsWelfare: 0,
+        customItems: {},
+        totalAmount: amount,
+        projectId,
       })
     }
 

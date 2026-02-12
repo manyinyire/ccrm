@@ -349,3 +349,46 @@ model Asset {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
+
+// ─── Double-Entry Accounting ────────────────────────────────────
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+model Account {
+  id          String      @id @default(cuid())
+  code        String      @unique // e.g. "1000", "2000", "4000"
+  name        String      // e.g. "Cash at Hand", "Accounts Receivable"
+  type        AccountType
+  parentId    String?
+  parent      Account?    @relation("AccountTree", fields: [parentId], references: [id])
+  children    Account[]   @relation("AccountTree")
+  description String      @default("")
+  isSystem    Boolean     @default(false) // system accounts can't be deleted
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  debitEntries  JournalEntry[] @relation("DebitAccount")
+  creditEntries JournalEntry[] @relation("CreditAccount")
+}
+
+model JournalEntry {
+  id             String   @id @default(cuid())
+  date           DateTime
+  debitAccountId String
+  debitAccount   Account  @relation("DebitAccount", fields: [debitAccountId], references: [id])
+  creditAccountId String
+  creditAccount  Account  @relation("CreditAccount", fields: [creditAccountId], references: [id])
+  amount         Float
+  currency       Currency
+  description    String
+  reference      String   @default("") // e.g. "INC-xxx", "EXP-xxx", "REC-xxx"
+  sourceType     String   @default("") // "Income", "Expense", "Receivable", "Refund"
+  sourceId       String   @default("") // ID of the source record
+  assemblyId     String?
+  createdAt      DateTime @default(now())
+}

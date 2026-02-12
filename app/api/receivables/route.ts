@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { prisma } from "@/lib/prisma"
 import { auth } from "@/lib/auth"
 import { logAuditFromSession } from "@/lib/audit"
+import { journalForReceivable } from "@/lib/journal"
 
 export async function GET() {
   const records = await prisma.receivable.findMany({
@@ -30,6 +31,16 @@ export async function POST(req: Request) {
       },
       include: { assembly: { select: { name: true } } },
     })
+    await journalForReceivable({
+      id: record.id,
+      assemblyId: record.assemblyId,
+      date: record.date,
+      currency: record.currency as "USD" | "ZWL",
+      amount: record.amount,
+      paymentMethod: record.paymentMethod,
+      sentToPastor: record.sentToPastor,
+    })
+
     const session = await auth()
     await logAuditFromSession(session, "CREATE", "Receivable", `Created receivable: ${record.currency} ${record.amount} (${record.paymentMethod})`, record.id)
 

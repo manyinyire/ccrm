@@ -181,14 +181,14 @@ export default function SettingsPage() {
                     {uploading ? "Uploading..." : "Upload Logo"}
                   </Button>
                   <p className="text-xs text-muted-foreground">
-                    PNG, JPG, or SVG. Max 2MB. Recommended 200×200px.
+                    PNG, JPG, or SVG. Max 500KB. Recommended 200×200px.
                   </p>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Logo URL (or enter manually)</Label>
                 <Input
-                  placeholder="/uploads/logo.png"
+                  placeholder="Logo stored in database"
                   value={settings.logoUrl}
                   onChange={(e) => set("logoUrl", e.target.value)}
                 />

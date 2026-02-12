@@ -103,7 +103,9 @@ export default function ReceivablesPage() {
   })
 
   const totalOutstanding = assemblyBalances.reduce((sum, a) => sum + Math.max(0, a.balance), 0)
-  const totalReceived = receivables.reduce((sum, r) => sum + convertToUSD(r.amount, r.currency), 0)
+  const totalReceived = receivables
+    .filter((r) => !r.sentToPastor)
+    .reduce((sum, r) => sum + convertToUSD(r.amount, r.currency), 0)
   const totalSentToPastor = receivables
     .filter((r) => r.sentToPastor)
     .reduce((sum, r) => sum + convertToUSD(r.amount, r.currency), 0)
@@ -384,7 +386,7 @@ function ReceivableForm({ assemblies, onClose }: { assemblies: Assembly[]; onClo
           onCheckedChange={(checked) => set("sentToPastor", !!checked)}
         />
         <Label htmlFor="sent-to-pastor" className="text-sm font-normal cursor-pointer">
-          Sent to Pastor (deducts from church balance)
+          Sent to Pastor (forwarded to pastor — deducts from assembly balance)
         </Label>
       </div>
       <div className="flex flex-col gap-2">

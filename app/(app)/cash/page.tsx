@@ -43,35 +43,39 @@ import {
 } from "recharts"
 
 type Receivable = { id: string; assemblyName: string; date: string; currency: string; amount: number; paymentMethod: string; sentToPastor: boolean; description: string }
+type Refund = { id: string; date: string; currency: string; amount: number; note: string }
 
 export default function CashPage() {
   const { currency } = useCurrency()
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [receivables, setReceivables] = useState<Receivable[]>([])
+  const [refunds, setRefunds] = useState<Refund[]>([])
 
   useEffect(() => {
-    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/receivables")]).then(async ([incRes, expRes, recRes]) => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/receivables"), fetch("/api/refunds")]).then(async ([incRes, expRes, recRes, refRes]) => {
       setIncomeRecords(await incRes.json())
       setExpenses(await expRes.json())
       setReceivables(await recRes.json())
+      setRefunds(await refRes.json())
     })
   }, [])
 
-  // Cash at hand calculations — based on receivables NOT sent to pastor
-  const keptReceivables = receivables.filter((r) => !r.sentToPastor)
-  const cashInUSD = keptReceivables.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
-  const cashInZWL = keptReceivables.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
+  // Cash at hand calculations — based on income.received field
+  const cashInUSD = incomeRecords.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.received, 0)
+  const cashInZWL = incomeRecords.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.received, 0)
   const cashOutUSD = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
   const cashOutZWL = expenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
+  const refundOutUSD = refunds.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
+  const refundOutZWL = refunds.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
 
   const activeCash = currency === "USD"
-    ? { cashIn: cashInUSD, cashOut: cashOutUSD, balance: cashInUSD - cashOutUSD }
-    : { cashIn: cashInZWL, cashOut: cashOutZWL, balance: cashInZWL - cashOutZWL }
+    ? { cashIn: cashInUSD, cashOut: cashOutUSD + refundOutUSD, balance: cashInUSD - cashOutUSD - refundOutUSD }
+    : { cashIn: cashInZWL, cashOut: cashOutZWL + refundOutZWL, balance: cashInZWL - cashOutZWL - refundOutZWL }
 
   // Build a ledger of cash-in and cash-out transactions
-  const cashInRecords = keptReceivables
-    .filter((r) => r.currency === currency)
+  const cashInRecords = receivables
+    .filter((r) => !r.sentToPastor && r.currency === currency)
     .map((r) => ({
       id: r.id,
       date: r.date,
@@ -92,7 +96,18 @@ export default function CashPage() {
       assembly: e.assemblyName,
     }))
 
-  const allTransactions = [...cashInRecords, ...cashOutRecords]
+  const refundOutRecords = refunds
+    .filter((r) => r.currency === currency)
+    .map((r) => ({
+      id: r.id,
+      date: r.date,
+      type: "out" as const,
+      description: `Refund: ${r.note || "Payment to owed person"}`,
+      amount: r.amount,
+      assembly: "Refund",
+    }))
+
+  const allTransactions = [...cashInRecords, ...cashOutRecords, ...refundOutRecords]
     .sort((a, b) => b.date.localeCompare(a.date))
 
   // Running balance

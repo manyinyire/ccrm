@@ -30,7 +30,9 @@ export async function GET(req: Request) {
   const cashInZWL = incomes.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.received, 0)
   const cashOutUSD = expensesList.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
   const cashOutZWL = expensesList.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
-  const cashBalance = (cashInUSD - cashOutUSD) + toUSD(cashInZWL - cashOutZWL, "ZWL")
+  const refundOutUSD = refunds.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
+  const refundOutZWL = refunds.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
+  const cashBalance = (cashInUSD - cashOutUSD - refundOutUSD) + toUSD(cashInZWL - cashOutZWL - refundOutZWL, "ZWL")
 
   // Owed balance
   const owedDebt = owedExpenses.reduce((sum, e) => sum + toUSD(e.amount, e.currency), 0)

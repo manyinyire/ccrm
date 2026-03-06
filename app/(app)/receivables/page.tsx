@@ -85,23 +85,25 @@ export default function ReceivablesPage() {
   })
 
   // Assembly balance calculations
-  // Income totalAmount = money owed by assembly
-  // Receivables amount = money received from assembly (deducts from balance)
+  // Income balance field already tracks outstanding amounts (totalAmount - received)
   const activeAssemblies = assemblies.filter((a) => a.status === "ACTIVE")
 
   const assemblyBalances = activeAssemblies.map((asm) => {
     const incomeTotal = incomeRecords
       .filter((r) => r.assemblyId === asm.id)
       .reduce((sum, r) => sum + convertToUSD(r.totalAmount, r.currency), 0)
-    const receivedTotal = receivables
+    const receivedTotal = incomeRecords
       .filter((r) => r.assemblyId === asm.id)
-      .reduce((sum, r) => sum + convertToUSD(r.amount, r.currency), 0)
+      .reduce((sum, r) => sum + convertToUSD(r.received, r.currency), 0)
+    const balance = incomeRecords
+      .filter((r) => r.assemblyId === asm.id)
+      .reduce((sum, r) => sum + convertToUSD(r.balance, r.currency), 0)
     return {
       id: asm.id,
       name: asm.name,
       incomeTotal,
       receivedTotal,
-      balance: incomeTotal - receivedTotal,
+      balance,
     }
   })
 

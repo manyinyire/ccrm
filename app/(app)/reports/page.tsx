@@ -85,17 +85,19 @@ export default function ReportsPage() {
   const [incomeRecords, setIncomeRecords] = useState<IncomeRecord[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [assemblies, setAssemblies] = useState<Assembly[]>([])
+  const [refunds, setRefunds] = useState<any[]>([])
   const [period, setPeriod] = useState("all")
   const [assemblyFilter, setAssemblyFilter] = useState("all")
 
   const monthOptions = useMemo(() => buildMonthOptions(), [])
 
   useEffect(() => {
-    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/assemblies")]).then(
-      async ([incRes, expRes, asmRes]) => {
+    Promise.all([fetch("/api/income"), fetch("/api/expenses"), fetch("/api/assemblies"), fetch("/api/refunds")]).then(
+      async ([incRes, expRes, asmRes, refRes]) => {
         setIncomeRecords(await incRes.json())
         setExpenses(await expRes.json())
         setAssemblies(await asmRes.json())
+        setRefunds(await refRes.json())
       }
     )
   }, [])
@@ -119,8 +121,12 @@ export default function ReportsPage() {
 
   // Cash at hand computed
   const cashInUSD = filteredIncome.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.received, 0)
+  const cashInZWL = filteredIncome.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.received, 0)
   const cashOutUSD = filteredExpenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "USD").reduce((sum, e) => sum + e.amount, 0)
-  const cashBalance = cashInUSD - cashOutUSD
+  const cashOutZWL = filteredExpenses.filter((e) => e.paymentSource === "CASH_AT_HAND" && e.currency === "ZWL").reduce((sum, e) => sum + e.amount, 0)
+  const refundOutUSD = refunds.filter((r) => r.currency === "USD").reduce((sum, r) => sum + r.amount, 0)
+  const refundOutZWL = refunds.filter((r) => r.currency === "ZWL").reduce((sum, r) => sum + r.amount, 0)
+  const cashBalance = (cashInUSD - cashOutUSD - refundOutUSD) + convertToUSD(cashInZWL - cashOutZWL - refundOutZWL, "ZWL")
 
   // Owed balance computed
   const owedExpenses = filteredExpenses.filter((e) => e.paymentSource === "OWED_PERSON")
